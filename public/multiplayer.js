@@ -68,6 +68,8 @@
   }));
   ui.roomKind.addEventListener('change',()=>{ui.roomWrap.hidden=ui.roomKind.value!=='join';});
   el('mp-leave').addEventListener('click',()=>{if(window.confirm('Leave multiplayer and return to hangar?')){cleanup();location.reload();}});
+  const copyRoomButton=el('mp-copy-room');
+  copyRoomButton.addEventListener('click',()=>{if(mp.room&&navigator.clipboard)navigator.clipboard.writeText(mp.room).then(()=>showToast('Room code copied: '+mp.room)).catch(()=>showToast('Your room code: '+mp.room));});
   ui.startRace.addEventListener('click',()=>{if(mp.id===mp.hostId)emit({type:'start_race'});});
   ui.url.addEventListener('change',()=>{try{localStorage.setItem('afsRealtimeUrl',ui.url.value.trim())}catch(_){}});
   refreshSelection();
@@ -115,7 +117,7 @@
         ws.onclose=()=>{clearTimeout(timeout);if(mp.id){text(ui.status,'Server disconnected — flight continues offline');mp.id='';ui.ping.textContent='Offline';}else reject(new Error('Server closed the connection.'));};
       });
       try{localStorage.setItem('afsRealtimeUrl',url);}catch(_){ }
-      mp.id=reply.id;mp.room=reply.code;mp.hostId=reply.hostId;mp.max=reply.maxPlayers||64;mp.mode=reply.mode;mp.state=reply.raceState||'waiting';mp.roster=reply.players||[];
+      mp.id=reply.id;mp.room=reply.code;copyRoomButton.hidden=mp.room.startsWith('PUBLIC');mp.hostId=reply.hostId;mp.max=reply.maxPlayers||64;mp.mode=reply.mode;mp.state=reply.raceState||'waiting';mp.roster=reply.players||[];
       mp.raceStartAt=reply.startAt||0;mp.raceStarted=reply.raceState==='running';mp.hasFinished=false;
       const world=reply.world||{};
       if(mp.mode==='race'){
@@ -138,8 +140,8 @@
       ui.room.textContent=(mp.room.startsWith('PUBLIC')?'PUBLIC':'ROOM '+mp.room)+(mp.mode==='race'?' · RACE':' · FREE');
       if(mp.mode==='race'){paused=true;mp.raceStarted=false;ui.gate.hidden=false;}
       else ui.gate.hidden=true;
-      text(ui.menu,`Connected: ${mp.room}`);
-      showToast(`Connected as ${username} · ${mp.room}`);
+      text(ui.menu,mp.room.startsWith('PUBLIC')?`Connected to ${mp.room}`:`Private room code: ${mp.room} — share with friends`);
+      showToast(mp.room.startsWith('PUBLIC')?`Connected as ${username}`:`Your room code: ${mp.room} · share it with friends`);
       drawHud();
     }catch(err){if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;showError(err.message||'Multiplayer unavailable');}
     finally{mp.connecting=false;updateStartButton();}
@@ -167,51 +169,49 @@
     if(msg.type==='pong'&&msg.t){mp.latency=Math.max(0,Date.now()-msg.t);}
   }
 
-  // Low-draw-call airliner used after the dozen nearest/detailled replicas; keeps large rooms flyable.
-  function createLiteRemoteAirliner(livery,airframe){
-    const g=new THREE.Group();const wide=airframe==='787'||airframe==='A350';
-    const span=wide?20:15,len=wide?20:15;
-    const bodyMat=new THREE.MeshStandardMaterial({color:livery.body||0xffffff,roughness:.40,metalness:.15});
-    const wingMat=new THREE.MeshStandardMaterial({color:livery.upper||0xdce8ef,roughness:.44,side:THREE.DoubleSide});
-    const accent=new THREE.MeshStandardMaterial({color:livery.primary||0x175488,roughness:.41});
-    const body=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.08,len,10),bodyMat);body.rotation.x=Math.PI/2;g.add(body);
-    const wing=new THREE.Mesh(new THREE.BoxGeometry(span,.24,3.5),wingMat);wing.position.z=-.7;g.add(wing);
-    const stab=new THREE.Mesh(new THREE.BoxGeometry(span*.36,.17,1.3),wingMat);stab.position.z=-len*.42;g.add(stab);
-    const fin=new THREE.Mesh(new THREE.BoxGeometry(.19,3.6,2.6),accent);fin.position.set(0,1.7,-len*.43);g.add(fin);
-    for(const side of [-1,1]){
-      const eng=new THREE.Mesh(new THREE.CylinderGeometry(.60,.63,2.1,10),bodyMat);eng.rotation.x=Math.PI/2;eng.position.set(side*span*.20,-.85,.35);g.add(eng);
-      const stripe=new THREE.Mesh(new THREE.BoxGeometry(.04,.17,len*.66),accent);stripe.position.set(side*1.09,.08,.2);g.add(stripe);
-      addSideDecal(g,livery.label||'AFS',livery.text||'#123d7a',1.1,.50,1.65,5.2,.8,side);
+  // Remote pilots use the SAME detailed geometry and livery builders as local aircraft.
+  // Clone cached templates for players using the same aircraft/livery to share GPU assets.
+  const aircraftTemplates = new Map();
+  const typeNames = { '737':'Boeing 737-800', A320:'Airbus A320neo', A350:'Airbus A350-900', '787':'Boeing 787-9', F18:'F/A-18E', F22:'F-22A', B2:'B-2 Spirit' };
+  function remoteAircraftModel(p){
+    const key=p.aircraft+':'+p.livery;
+    if(!aircraftTemplates.has(key)){
+      const oldSelection=selection, oldLivery=selectedLivery;
+      let source;
+      try {
+        selection=p.aircraft;
+        selectedLivery=p.livery;
+        source=p.aircraft==='737'?create737():p.aircraft==='787'?create787():p.aircraft==='A320'?createA320():p.aircraft==='A350'?createA350():p.aircraft==='F18'?createF18():p.aircraft==='F22'?createF22():createB2();
+      } finally {selection=oldSelection;selectedLivery=oldLivery;}
+      aircraftTemplates.set(key,source);
     }
-    g.scale.setScalar(wide?1.5:1.3);return g;
+    return aircraftTemplates.get(key).clone(true);
   }
   function createRemoteAircraft(p){
-    const livery=(liveryCatalog[p.aircraft]||[]).find(l=>l.id===p.livery)||(liveryCatalog[p.aircraft]||[])[0]||{body:0xf4f5f7,primary:0x2266aa,secondary:0x38bdf8,label:'AFS'};
-    let model;
-    if(['737','A320','A350','787'].includes(p.aircraft)&&mp.remote.size<12)model=createSimpleAIAircraft(livery,p.aircraft);
-    else if(['737','A320','A350','787'].includes(p.aircraft))model=createLiteRemoteAirliner(livery,p.aircraft);
-    else{
-      model=new THREE.Group();
-      const body=new THREE.Mesh(new THREE.CylinderGeometry(.72,.98,p.aircraft==='B2'?9:12,12),new THREE.MeshStandardMaterial({color:livery.body||0x4b5563,metalness:.20,roughness:.53}));body.rotation.x=Math.PI/2;model.add(body);
-      const span=p.aircraft==='B2'?28:12;
-      const shape=new THREE.Shape();shape.moveTo(0,4);shape.lineTo(span,-2);shape.lineTo(span*.68,-5);shape.lineTo(0,-2.6);shape.lineTo(-span*.68,-5);shape.lineTo(-span,-2);shape.closePath();
-      const geo=new THREE.ExtrudeGeometry(shape,{depth:.16,bevelEnabled:false});geo.rotateX(Math.PI/2);
-      model.add(new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:livery.upper||livery.body||0x64748b,side:THREE.DoubleSide,roughness:.56})));
-      if(p.aircraft!=='B2')for(const side of [-1,1]){const tail=new THREE.Mesh(new THREE.BoxGeometry(.12,2.4,2.9),new THREE.MeshStandardMaterial({color:livery.primary||0x64748b}));tail.position.set(side*2.1,1.1,-4.3);tail.rotation.z=side*.20;model.add(tail);}
-      model.scale.setScalar(p.aircraft==='B2'?1.5:1.15);
-    }
-    const canvas=document.createElement('canvas');canvas.width=512;canvas.height=90;const ctx=canvas.getContext('2d');
-    ctx.fillStyle='rgba(2,12,25,.82)';ctx.fillRect(0,0,512,90);ctx.strokeStyle='#38bdf8';ctx.lineWidth=3;ctx.strokeRect(3,3,506,84);
-    ctx.font='bold 43px Arial,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';ctx.fillText(safe(p.name),256,48,490);
-    const tex=new THREE.CanvasTexture(canvas);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false,depthTest:false}));sprite.scale.set(21,4,1);sprite.position.y=9;model.add(sprite);
-    model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+    const model=remoteAircraftModel(p);
+    model.name=`Online Pilot · ${safe(p.name)} · ${typeNames[p.aircraft]||p.aircraft}`;
+    const livery=(liveryCatalog[p.aircraft]||[]).find(l=>l.id===p.livery);
+    const canvas=document.createElement('canvas');canvas.width=768;canvas.height=140;
+    const ctx=canvas.getContext('2d');
+    ctx.fillStyle='rgba(4,15,34,.85)';ctx.fillRect(0,0,768,140);
+    ctx.strokeStyle='#39d5ff';ctx.lineWidth=4;ctx.strokeRect(3,3,762,134);
+    ctx.font='bold 54px Arial,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';
+    ctx.fillText(safe(p.name),384,49,735);
+    ctx.font='32px Arial,sans-serif';ctx.fillStyle='#80dfff';
+    ctx.fillText(`${typeNames[p.aircraft]||p.aircraft} · ${livery?.name||'AFS'}`,384,104,730);
+    const texture=new THREE.CanvasTexture(canvas);
+    const nameplate=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false,depthTest:false}));
+    nameplate.name='pilotUsernameLabel';nameplate.scale.set(32,5.83,1);
+    nameplate.position.set(0,p.aircraft==='B2'?9:11,0);
+    // The label is attached to the *actual* plane, not a stand-in geometric marker.
+    model.add(nameplate);
     scene.add(model);
-    return {group:model,position:new THREE.Vector3(),quaternion:new THREE.Quaternion(),ready:false,stale:performance.now(), name:p.name};
+    return {group:model,position:new THREE.Vector3(),quaternion:new THREE.Quaternion(),ready:false,stale:performance.now(),name:p.name,aircraft:p.aircraft,livery:p.livery};
   }
   function removeRemote(id){const item=mp.remote.get(id);if(!item)return;scene.remove(item.group);item.group.traverse(o=>{if(o.isSprite&&o.material){if(o.material.map)o.material.map.dispose();o.material.dispose();}});mp.remote.delete(id);}
   function receiveRemote(p){
     if(!Array.isArray(p.position)||p.position.length!==3||!Array.isArray(p.rotation)||p.rotation.length!==4)return;
-    let remote=mp.remote.get(p.id);if(!remote){remote=createRemoteAircraft(p);mp.remote.set(p.id,remote);}
+    let remote=mp.remote.get(p.id);if(remote && (remote.aircraft!==p.aircraft||remote.livery!==p.livery)){removeRemote(p.id);remote=null;}if(!remote){remote=createRemoteAircraft(p);mp.remote.set(p.id,remote);}
     remote.position.set(...p.position);remote.quaternion.set(...p.rotation).normalize();
     if(!remote.ready){remote.group.position.copy(remote.position);remote.group.quaternion.copy(remote.quaternion);remote.ready=true;}
     remote.stale=performance.now();

@@ -76,6 +76,8 @@ function safeName(request,room){
 }
 function hello(ws,m){
   if(clients.has(ws))return;
+  // Reject unnamed clients BEFORE allocating or joining any room.
+  if(str(m.name,20).replace(/[\u007f-\u009f]/g,'').length<2)throw Error('Enter a username (2–20 characters) to join multiplayer.');
   const kind=['public','create','join'].includes(m.roomKind)?m.roomKind:'public';
   const mode=modes.has(m.mode)?m.mode:'free';
   let room;

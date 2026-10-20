@@ -2066,7 +2066,7 @@
         </div>
         <div class="premium-stack">
           <button id="premiumButton" class="premium-button">Enable Premium</button>
-          <div class="version-tag premium-version">v 1.0.0</div>
+          <div class="version-tag premium-version">v 1.0.2</div>
         </div>
       </div>
 
@@ -2138,8 +2138,8 @@
         <div class="mp-form-grid">
           <label>Username <input id="mp-username" required minlength="2" maxlength="20" placeholder="Enter username to play online" autocomplete="nickname" spellcheck="false" /></label>
           <input id="mp-mode" type="hidden" value="free" />
-          <label>Room <select id="mp-room-kind"><option value="public">Join Public Server</option><option value="create">Create Private Room</option><option value="join">Join Private Room</option></select></label>
-          <label id="mp-room-code-wrap" hidden>Room Code <input id="mp-room-code" maxlength="12" placeholder="e.g. ABC123" autocomplete="off" spellcheck="false" /></label>
+          <label>Room <select id="mp-room-kind"><option value="public">Join Public Server</option><option value="create">Host Private Room (code generated automatically)</option><option value="join">Join Private Room</option></select></label>
+          <label id="mp-room-code-wrap" hidden>Friend's Room Code <input id="mp-room-code" maxlength="12" placeholder="e.g. ABC123" autocomplete="off" spellcheck="false" /></label>
         </div>
         <details class="mp-server-advanced"><summary>Connection settings</summary><label>Multiplayer server URL <input id="mp-server-url" type="url" placeholder="wss://your-realtime-server.onrender.com/ws" autocomplete="url" spellcheck="false"/></label><p>Vercel hosts the game. A separately deployed WebSocket server connects pilots in real time.</p></details>
         <p class="mp-inline-note" id="mp-setup-help">Select Free Flight or Ring Race above, enter your pilot name, and choose a plane and livery.</p>
@@ -2176,7 +2176,7 @@
   </div>
 
   <div id="mp-hud" aria-live="polite" hidden>
-    <div class="mp-hud-head"><span id="mp-room-indicator">MULTIPLAYER</span><button id="mp-leave" title="Leave multiplayer" type="button">LEAVE</button></div>
+    <div class="mp-hud-head"><span id="mp-room-indicator">MULTIPLAYER</span><button id="mp-copy-room" type="button" hidden title="Copy generated private room code">COPY CODE</button><button id="mp-leave" title="Leave multiplayer" type="button">LEAVE</button></div>
     <div class="mp-hud-line"><b id="mp-count">1/64</b><span id="mp-ping">Online</span></div>
     <div id="mp-status">Connected</div>
     <div id="mp-scoreboard"></div>
