@@ -122,3 +122,4 @@ All 7 aircraft, their liveries and Premium choices, flight handling and stabilit
 - Rooms exist in the running server's memory and disappear after server restarts. Scaling to multiple server instances needs shared room/session storage and routing, not just an environment variable.
 - The server must actually be hosted online; merely uploading the ZIP to Vercel cannot run a persistent WebSocket server on Vercel functions.
 - Real-world load testing and two-device end-to-end tests must be done after deployment.
+Multiplayer deployment enabled.
