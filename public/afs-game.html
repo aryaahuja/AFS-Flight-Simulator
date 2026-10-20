@@ -2136,7 +2136,7 @@
       <div id="multiplayer-setup" aria-label="Multiplayer setup">
         <div class="mp-head"><span>ONLINE MULTIPLAYER</span><span id="mp-menu-status">Not connected</span></div>
         <div class="mp-form-grid">
-          <label>Username <input id="mp-username" maxlength="20" placeholder="Your pilot name" autocomplete="nickname" spellcheck="false" /></label>
+          <label>Username <input id="mp-username" required minlength="2" maxlength="20" placeholder="Enter username to play online" autocomplete="nickname" spellcheck="false" /></label>
           <input id="mp-mode" type="hidden" value="free" />
           <label>Room <select id="mp-room-kind"><option value="public">Join Public Server</option><option value="create">Create Private Room</option><option value="join">Join Private Room</option></select></label>
           <label id="mp-room-code-wrap" hidden>Room Code <input id="mp-room-code" maxlength="12" placeholder="e.g. ABC123" autocomplete="off" spellcheck="false" /></label>

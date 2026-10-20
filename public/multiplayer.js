@@ -13,7 +13,21 @@
   const networkIsOpen = () => mp.ws && mp.ws.readyState === WebSocket.OPEN;
   const emit = obj => { if(networkIsOpen())mp.ws.send(JSON.stringify(obj)); };
   const isOnline = () => !!mp.id && networkIsOpen();
-  try{ui.name.value=localStorage.getItem('afsPilotName')||'';ui.url.value=localStorage.getItem('afsRealtimeUrl')||'';}catch(_){ }
+  try{ui.url.value=localStorage.getItem('afsRealtimeUrl')||'';}catch(_){ }
+  // Require a deliberate username entry on every new multiplayer session.
+  ui.name.value='';
+  ui.name.required=true;ui.name.minLength=2;ui.name.maxLength=20;
+  ui.name.setAttribute('aria-required','true');
+  const validPilotName=()=>safe(ui.name.value).replace(/[<>"'`]/g,'').length>=2;
+  const originalUpdateStartButton=updateStartButton;
+  updateStartButton=function(){
+    originalUpdateStartButton();
+    if(mp.selected && !validPilotName()) el('startButton').disabled=true;
+  };
+  ui.name.addEventListener('input',()=>{
+    if(validPilotName() && ui.menu.textContent.includes('username')) {ui.menu.textContent='Not connected';ui.help.textContent='Choose a multiplayer mode and enter the server.';ui.help.style.color='';}
+    updateStartButton();
+  });
 
   function refreshSelection(){
     ui.single.classList.toggle('active',!mp.selected);
@@ -75,7 +89,7 @@
   async function connectAndStart(){
     if(!onlineChoice){showError('Select Free Flight or Ring Race before joining multiplayer.');return;}
     const username=safe(ui.name.value).replace(/[<>"'`]/g,'');
-    if(username.length<2){showError('Enter a username (2–20 characters).');ui.name.focus();return;}
+    if(username.length<2){showError('You must enter a username (2–20 characters) before joining multiplayer.');ui.name.focus();return;}
     let url=ui.url.value.trim();
     if(!url){showError('Multiplayer server is not deployed yet. Add its wss:// URL under Connection settings.');ui.setup.querySelector('details').open=true;return;}
     if(/^https:\/\//i.test(url))url=url.replace(/^https:/i,'wss:');
@@ -100,7 +114,7 @@
         };
         ws.onclose=()=>{clearTimeout(timeout);if(mp.id){text(ui.status,'Server disconnected — flight continues offline');mp.id='';ui.ping.textContent='Offline';}else reject(new Error('Server closed the connection.'));};
       });
-      try{localStorage.setItem('afsPilotName',username);localStorage.setItem('afsRealtimeUrl',url);}catch(_){ }
+      try{localStorage.setItem('afsRealtimeUrl',url);}catch(_){ }
       mp.id=reply.id;mp.room=reply.code;mp.hostId=reply.hostId;mp.max=reply.maxPlayers||64;mp.mode=reply.mode;mp.state=reply.raceState||'waiting';mp.roster=reply.players||[];
       mp.raceStartAt=reply.startAt||0;mp.raceStarted=reply.raceState==='running';mp.hasFinished=false;
       const world=reply.world||{};
