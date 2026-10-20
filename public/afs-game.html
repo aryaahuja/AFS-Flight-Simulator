@@ -2004,6 +2004,8 @@
     #mp-menu-status {color:#cbd5e1;letter-spacing:normal;font-weight:500;}
     .mp-form-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
     #multiplayer-setup label {display:flex;flex-direction:column;gap:5px;color:#d5e7f5;font-size:12px;font-weight:700;}
+    /* Explicitly override label display:flex when the private join-code field is hidden. */
+    #mp-room-code-wrap[hidden] {display:none!important;}
     #multiplayer-setup input, #multiplayer-setup select {min-width:0;width:100%;border:1px solid rgba(136,187,226,.38);background:#0b192a;color:#f0f8ff;border-radius:8px;padding:10px;font:inherit;font-size:14px;outline-offset:3px;}
     .mp-server-advanced {margin-top:10px;border-top:1px solid rgba(148,163,184,.24);padding-top:8px;font-size:12px;}
     .mp-server-advanced summary {cursor:pointer;color:#a3d7f7;font-weight:700;}

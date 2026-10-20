@@ -39,6 +39,7 @@
     ui.heading.textContent=mp.selected?'2 · Select Multiplayer Mode':'2 · Select Single-Player Mode';
     ui.setup.classList.toggle('open',mp.selected);
     ui.roomWrap.hidden=ui.roomKind.value!=='join';
+    ui.roomCode.required=ui.roomKind.value==='join';
     el('startButton').textContent=mp.selected?'Enter Multiplayer':'Take Command';
     if(mp.selected){
       ui.mode.value=onlineChoice||'free';
@@ -66,7 +67,12 @@
     mp.selected=true;
     refreshSelection();
   }));
-  ui.roomKind.addEventListener('change',()=>{ui.roomWrap.hidden=ui.roomKind.value!=='join';});
+  ui.roomKind.addEventListener('change',()=>{
+    const joiningPrivate=ui.roomKind.value==='join';
+    ui.roomWrap.hidden=!joiningPrivate;
+    ui.roomCode.required=joiningPrivate;
+    if(!joiningPrivate)ui.roomCode.value='';
+  });
   el('mp-leave').addEventListener('click',()=>{if(window.confirm('Leave multiplayer and return to hangar?')){cleanup();location.reload();}});
   const copyRoomButton=el('mp-copy-room');
   copyRoomButton.addEventListener('click',()=>{if(mp.room&&navigator.clipboard)navigator.clipboard.writeText(mp.room).then(()=>showToast('Room code copied: '+mp.room)).catch(()=>showToast('Your room code: '+mp.room));});
@@ -99,7 +105,7 @@
     if(!/^wss?:\/\//i.test(url)){showError('Use a wss:// multiplayer server URL.');return;}
     try{const parsed=new URL(url);if(parsed.pathname==='/'||!parsed.pathname)parsed.pathname='/ws';url=parsed.toString();}catch(_){showError('Invalid multiplayer URL.');return;}
     if(location.protocol==='https:'&&/^ws:\/\//i.test(url)){showError('Your Vercel website requires a secure wss:// multiplayer connection.');return;}
-    let room=ui.roomCode.value.toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,12);
+    let room=ui.roomKind.value==='join'?ui.roomCode.value.toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,12):'';
     if(ui.roomKind.value==='join'&&!room){showError('Enter your friend\'s private room code.');return;}
     mp.connecting=true; text(ui.menu,'Connecting…');ui.help.style.color='';
     el('startButton').disabled=true;
