@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: afs-realtime-server
+    runtime: node
+    rootDir: realtime-server
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: MAX_PLAYERS
+        value: "64"
