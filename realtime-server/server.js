@@ -58,7 +58,7 @@ function getPublicRoom(mode,request){
   throw Error('Public servers are full. Please try creating a private room.');
 }
 function publicPlayer(p){
-  return {id:p.id,name:p.name,aircraft:p.aircraft,livery:p.livery,position:p.position,rotation:p.rotation,speed:p.speed,progress:p.progress,finished:p.finished,finishedAt:p.finishedAt,dnf:p.dnf,premium:p.premium};
+  return {id:p.id,name:p.name,aircraft:p.aircraft,livery:p.livery,position:p.position,rotation:p.rotation,speed:p.speed,progress:p.progress,finished:p.finished,finishedAt:p.finishedAt,place:p.place||0,dnf:p.dnf,premium:p.premium};
 }
 function roomPlayers(room){return [...room.players.values()].map(publicPlayer);}
 function broadcast(room,obj){const body=JSON.stringify(obj);for(const p of room.players.values())wsSend(p.ws,body);}
@@ -90,7 +90,7 @@ function hello(ws,m){
     // Clients learn it from the welcome message before starting their flight.
   }
   if(room.players.size>=MAX_PLAYERS)throw Error(`Room is full (${MAX_PLAYERS} pilots).`);
-  const player={ws,id:randomUUID(),name:safeName(m,room),aircraft:allowedAirframes.has(m.aircraft)?m.aircraft:'A320',livery:str(m.livery,40),premium:!!m.premium,position:null,rotation:null,speed:0,progress:0,total:0,finished:false,finishedAt:0,dnf:false,lastState:0,lastProgress:0,joinedAt:Date.now()};
+  const player={ws,id:randomUUID(),name:safeName(m,room),aircraft:allowedAirframes.has(m.aircraft)?m.aircraft:'A320',livery:str(m.livery,40),premium:!!m.premium,position:null,rotation:null,speed:0,progress:0,total:0,finished:false,finishedAt:0,place:0,dnf:false,lastState:0,lastProgress:0,joinedAt:Date.now()};
   room.players.set(player.id,player);room.lastActive=Date.now();clients.set(ws,{room,player});
   if(!room.hostId)room.hostId=player.id;
   send(ws,{type:'welcome',id:player.id,code:room.code,mode:room.mode,world:room.world,hostId:room.hostId,maxPlayers:MAX_PLAYERS,players:roomPlayers(room),raceState:room.raceState,startAt:room.startAt});
@@ -103,7 +103,7 @@ function startRace(room,requester){
   if(room.raceState==='running'||room.raceState==='countdown')return;
   if(room.raceTimer)clearTimeout(room.raceTimer);
   room.raceState='countdown';room.startAt=Date.now()+6500;
-  for(const p of room.players.values()){p.progress=0;p.total=0;p.finished=false;p.finishedAt=0;p.dnf=false;p.lastProgress=0;}
+  for(const p of room.players.values()){p.progress=0;p.total=0;p.finished=false;p.finishedAt=0;p.place=0;p.dnf=false;p.lastProgress=0;}
   broadcast(room,{type:'race_countdown',startAt:room.startAt});
   broadcastRoom(room);
   room.raceTimer=setTimeout(()=>{
@@ -134,7 +134,11 @@ function progressFromPlayer(room,p,m){
 function finishFromPlayer(room,p,m){
   if(room.mode!=='race'||room.raceState!=='running'||p.finished)return;
   if(p.total<10||p.progress<p.total){send(p.ws,{type:'error',message:'Collect every checkpoint to complete the race.'});return;}
-  p.finished=true;p.finishedAt=Date.now();broadcastRoom(room);
+  // Rank finishing pilots by their actual finish order. Only first three earn a place.
+  const completed=[...room.players.values()].filter(x=>x.finished).length;
+  p.finished=true;p.finishedAt=Date.now();p.place=completed<3?completed+1:0;
+  if(p.place)send(p.ws,{type:'race_placement',place:p.place});
+  broadcastRoom(room);
   const racers=[...room.players.values()];if(racers.every(x=>x.finished||x.dnf)){
     room.raceState='finished';broadcastRoom(room);
   }
@@ -159,7 +163,7 @@ function disconnect(ws){
   else{
     broadcast(room,{type:'pilot_left',name:player.name,aircraft:player.aircraft});
     if(room.mode==='race'&&(room.raceState==='running'||room.raceState==='countdown')){
-      if(room.players.size===1){const survivor=[...room.players.values()][0];if(!survivor.finished&&!survivor.dnf){survivor.finished=true;survivor.finishedAt=Date.now();room.raceState='finished';if(room.raceTimer){clearTimeout(room.raceTimer);room.raceTimer=null;}broadcast(room,{type:'race_forfeit_win',winnerId:survivor.id});}}
+      if(room.players.size===1){const survivor=[...room.players.values()][0];if(!survivor.dnf){survivor.finished=true;survivor.finishedAt=survivor.finishedAt||Date.now();survivor.place=1;room.raceState='finished';if(room.raceTimer){clearTimeout(room.raceTimer);room.raceTimer=null;}send(survivor.ws,{type:'race_forfeit_win',winnerId:survivor.id});}}
       else if([...room.players.values()].every(p=>p.finished||p.dnf))room.raceState='finished';
     }
     broadcastRoom(room);

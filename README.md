@@ -19,3 +19,6 @@ JavaScript syntax and HTML ID checks passed. End-to-end multiplayer gameplay, va
 
 ### Join Private Room fix
 When Join Private Room is selected, the multiplayer mode cards are hidden. Enter the room code; the server detects the room mode and shows a confirmation before joining. Public and Host still require a mode choice.
+
+
+Update: Multiplayer minimap/radar fully removed; all other multiplayer functionality remains.

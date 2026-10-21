@@ -177,7 +177,7 @@
       aiTraffic.forEach(a=>a.model.visible=false);
       ui.hud.hidden=false;document.body.classList.add('afs-online');
       ui.room.textContent=(mp.room.startsWith('PUBLIC')?'PUBLIC SERVER':'PRIVATE ROOM')+(mp.mode==='race'?' · RACE':' · FREE');
-      el('mp-room-code-line').hidden=mp.room.startsWith('PUBLIC');el('mp-code-text').textContent=mp.room;showMinimap();
+      el('mp-room-code-line').hidden=mp.room.startsWith('PUBLIC');el('mp-code-text').textContent=mp.room;
       if(mp.mode==='race'){paused=mp.state!=='running';mp.raceStarted=mp.state==='running';ui.gate.hidden=mp.raceStarted;}
       else ui.gate.hidden=true;
       text(ui.menu,mp.room.startsWith('PUBLIC')?`Connected to ${mp.room}`:`Private room code: ${mp.room} — share with friends`);
@@ -192,8 +192,18 @@
       mp.departures.unshift(notice);mp.departures=mp.departures.slice(0,8);drawDepartures();
       if(isOnline())showToast(notice);return;
     }
+    if(msg.type==='race_placement'){
+      const labels={1:['YOU WIN! · 1ST PLACE','Congratulations! You finished first in the Ring Race.'],2:['2ND PLACE','You finished second in the Ring Race.'],3:['3RD PLACE','You finished third in the Ring Race.']};
+      const result=labels[msg.place];
+      if(result&&isOnline()){
+        el('mp-race-result-title').textContent=result[0];el('mp-race-result-message').textContent=result[1];
+        el('mp-race-forfeit').hidden=false;showToast(result[0]);
+      }return;
+    }
     if(msg.type==='race_forfeit_win'){
       if(msg.winnerId===mp.id&&!mp.forfeitShown){mp.forfeitShown=true;mp.state='finished';mp.hasFinished=true;paused=true;
+        el('mp-race-result-title').textContent='YOU WIN! · BY FORFEIT';
+        el('mp-race-result-message').textContent='All other pilots have left this Ring Race. You are the last remaining pilot and have won by forfeit.';
         el('mp-race-forfeit').hidden=false;showToast('All opponents left — you win by forfeit!');}
       return;
     }
@@ -277,9 +287,9 @@
       const ordered=[...mp.roster].sort((a,b)=>{if(a.finished&&b.finished)return a.finishedAt-b.finishedAt;if(a.finished)return -1;if(b.finished)return 1;return (b.progress||0)-(a.progress||0);});
       ui.scores.replaceChildren();ordered.slice(0,12).forEach((p,i)=>{
         const row=document.createElement('div');row.className='mp-rank'+(p.id===mp.id?' self':'');
-        const num=document.createElement('span');num.textContent=`${i+1}.`;
+        const num=document.createElement('span');num.textContent=p.finished?(p.place&&p.place<=3?`${p.place}.`:'—'):'·';
         const name=document.createElement('span');name.className='mp-name';name.textContent=p.name;
-        const score=document.createElement('span');score.textContent=p.finished?`FIN ${p.finishedAt?((p.finishedAt-(mp.raceStartAt||p.finishedAt))/1000).toFixed(0)+'s':''}`:p.dnf?'DNF':`${p.progress||0} rings`;
+        const score=document.createElement('span');score.textContent=p.finished?`${p.place&&p.place<=3?['','1ST','2ND','3RD'][p.place]+' · ':''}FIN ${p.finishedAt?((p.finishedAt-(mp.raceStartAt||p.finishedAt))/1000).toFixed(0)+'s':''}`:p.dnf?'DNF':`${p.progress||0} rings`;
         row.append(num,name,score);ui.scores.appendChild(row);
       });
       if(mp.state==='running')text(ui.status,`Race underway · ${mp.roster.length} pilots`);
@@ -294,59 +304,11 @@
       ui.scores.replaceChildren();text(ui.status,`Flying together · ${mp.room}`);ui.gate.hidden=true;
     }
   }
-  // Drag-only header. Default location avoids HUD, throttle and joystick.
-  const mapPanel=el('mp-minimap'),mapCanvas=el('mp-map-canvas'),mapCtx=mapCanvas.getContext('2d');
-  let mapDragged=false,mapCollapsed=false,mapDrag=null,mapAccumulator=0;
-  function placeMapSafely(){
-    if(mapDragged||mapPanel.hidden)return;
-    mapPanel.style.left='';mapPanel.style.right='';mapPanel.style.top='';mapPanel.style.bottom='';
-    const w=mapPanel.offsetWidth,h=mapPanel.offsetHeight,vw=innerWidth,vh=innerHeight;
-    const hudRect=ui.hud.getBoundingClientRect();
-    const candidates=[
-      {x:vw-w-12,y:Math.max(60,hudRect.bottom+12)},
-      {x:12,y:Math.max(215,Math.round(vh*.43))},
-      {x:Math.max(12,(vw-w)/2),y:Math.max(80,vh-h-14)},
-      {x:vw-w-12,y:Math.max(80,vh-h-190)}
-    ];
-    const blockers=['hud-strip','hud-left','controls-panel','power-controls','mobile-controls','attitude','mp-hud'].map(id=>el(id)).filter(Boolean).filter(node=>{const r=node.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(node).display!=='none'}).map(node=>node.getBoundingClientRect());
-    const penalty=pos=>{const x=Math.max(6,Math.min(vw-w-6,pos.x)),y=Math.max(6,Math.min(vh-h-6,pos.y));let overlap=0;
-      for(const r of blockers)overlap+=Math.max(0,Math.min(x+w,r.right)-Math.max(x,r.left))*Math.max(0,Math.min(y+h,r.bottom)-Math.max(y,r.top));return {x,y,overlap};};
-    let best=candidates.map(penalty).sort((a,b)=>a.overlap-b.overlap)[0];
-    mapPanel.style.left=best.x+'px';mapPanel.style.top=best.y+'px';
-  }
-  function showMinimap(){mapPanel.hidden=false;mapDragged=false;requestAnimationFrame(placeMapSafely);}
-  el('mp-map-toggle').addEventListener('click',()=>{mapCollapsed=!mapCollapsed;mapPanel.classList.toggle('collapsed',mapCollapsed);el('mp-map-toggle').textContent=mapCollapsed?'+':'−';if(!mapDragged)requestAnimationFrame(placeMapSafely);});
-  el('mp-map-head').addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;mapDragged=true;const rect=mapPanel.getBoundingClientRect();mapDrag={id:e.pointerId,dx:e.clientX-rect.left,dy:e.clientY-rect.top};e.currentTarget.setPointerCapture(e.pointerId);});
-  el('mp-map-head').addEventListener('pointermove',e=>{if(!mapDrag||mapDrag.id!==e.pointerId)return;
-    const x=Math.max(4,Math.min(innerWidth-mapPanel.offsetWidth-4,e.clientX-mapDrag.dx));const y=Math.max(4,Math.min(innerHeight-mapPanel.offsetHeight-4,e.clientY-mapDrag.dy));mapPanel.style.left=x+'px';mapPanel.style.top=y+'px';});
-  const endMapDrag=()=>mapDrag=null;
-  el('mp-map-head').addEventListener('pointerup',endMapDrag);el('mp-map-head').addEventListener('pointercancel',endMapDrag);
-  window.addEventListener('resize',()=>{if(!mapPanel.hidden&&!mapDragged)placeMapSafely();});
-  function drawMap(){if(mapPanel.hidden||mapCollapsed||!plane)return;
-    const c=mapCtx,w=mapCanvas.width,h=mapCanvas.height;c.clearRect(0,0,w,h);
-    c.fillStyle='#071729';c.fillRect(0,0,w,h);c.strokeStyle='#2b5671';c.lineWidth=1;
-    for(let i=1;i<4;i++){c.beginPath();c.arc(w/2,h/2,i*19,0,Math.PI*2);c.stroke();}
-    c.beginPath();c.moveTo(w/2,0);c.lineTo(w/2,h);c.moveTo(0,h/2);c.lineTo(w,h/2);c.stroke();
-    // Always retain distant traffic on radar. Zoom automatically out to fit the room.
-    let range=2000;for(const r of mp.remote.values())if(r.ready)range=Math.max(range,Math.hypot(r.position.x-plane.position.x,r.position.z-plane.position.z)*1.32);
-    range=Math.min(100000,range);
-    c.font='bold 10px Arial';c.fillStyle='#4ade80';c.beginPath();c.arc(w/2,h/2,4.3,0,Math.PI*2);c.fill();c.fillText('YOU',w/2+7,h/2-6);
-    for(const r of mp.remote.values()){
-      if(!r.ready)continue;const x=w/2+(r.position.x-plane.position.x)*((w*.40)/range),y=h/2-(r.position.z-plane.position.z)*((h*.43)/range);
-      c.fillStyle=r.premium?'#facc15':'#38bdf8';c.beginPath();c.arc(x,y,3.7,0,Math.PI*2);c.fill();
-      const txt=`${r.name} · ${typeNames[r.aircraft]||r.aircraft}`;
-      c.font='9px Arial';c.strokeStyle='#071729';c.lineWidth=3;c.strokeText(txt,Math.min(x+6,w-118),Math.max(11,y-5),119);c.fillStyle='#e5f4ff';c.fillText(txt,Math.min(x+6,w-118),Math.max(11,y-5),119);
-    }
-    const list=el('mp-map-list');list.replaceChildren();for(const r of mp.remote.values()){
-      const row=document.createElement('div');row.textContent=`● ${r.name} · ${typeNames[r.aircraft]||r.aircraft}`;list.appendChild(row);
-    }
-    if(!mp.remote.size)list.textContent='No other pilots in range';
-  }
   function frame(dt){
     if(!isOnline()||!plane)return;
     // Online humans replace the decorative offline AI pattern flights.
     for(const a of aiTraffic)a.model.visible=false;
-    mp.sendAccumulator+=dt;mp.uiAccumulator+=dt;mp.lagAccumulator+=dt;mapAccumulator+=dt;if(mapAccumulator>.35){mapAccumulator=0;drawMap();}
+    mp.sendAccumulator+=dt;mp.uiAccumulator+=dt;mp.lagAccumulator+=dt;
     if(mp.mode==='race'&&(mp.state==='countdown'||(mp.state==='running'&&!mp.raceStarted))){
       const remains=Math.max(0,Math.ceil((mp.raceStartAt-Date.now())/1000));
       if(remains>0){paused=true;ui.gate.hidden=false;text(ui.gateTitle,String(remains));text(ui.gateInfo,'Get ready! Hold your throttle until GO.');}
@@ -375,6 +337,6 @@
   function crashed(){/* A crash is recoverable; do not mark a racer DNF. */}
   function onRespawn(){if(isOnline())emit({type:'respawn'});}
   const mode=()=>mp.mode;const lastCheckpoint=()=>mp.lastCheckpoint;
-  function cleanup(){el('mp-room-code-line').hidden=true;el('mp-departures').replaceChildren();el('mp-race-forfeit').hidden=true;el('mp-room-confirm').hidden=true;mapPanel.hidden=true;mp.forfeitShown=false;mp.raceStarted=false;mp.hasFinished=false;mp.lastCheckpoint=0;mp.roster=[];mp.departures=[];if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;mp.id='';for(const [id] of mp.remote)removeRemote(id);ui.hud.hidden=true;ui.gate.hidden=true;}
+  function cleanup(){el('mp-room-code-line').hidden=true;el('mp-departures').replaceChildren();el('mp-race-forfeit').hidden=true;el('mp-room-confirm').hidden=true;mp.forfeitShown=false;mp.raceStarted=false;mp.hasFinished=false;mp.lastCheckpoint=0;mp.roster=[];mp.departures=[];if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;mp.id='';for(const [id] of mp.remote)removeRemote(id);ui.hud.hidden=true;ui.gate.hidden=true;}
   window.AFSMP={frame,checkpoint,landed,crashed,cleanup,isOnline,mode,lastCheckpoint,onRespawn};
 })();

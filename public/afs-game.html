@@ -2029,7 +2029,7 @@
     @media(max-width:650px){.mp-form-grid{grid-template-columns:1fr;}#mp-hud{top:55px;right:6px;width:min(170px,39vw);padding:6px;font-size:10px;max-height:36vh;}#mp-scoreboard{max-height:80px;}#mp-race-gate{top:24%;}.mp-gate-card{padding:9px 13px;}#mp-gate-title{font-size:16px;}}
     @media(max-height:440px){#mp-hud{top:45px;max-height:40vh;}#mp-race-gate{top:27%;}}
     .afs-controls-note{padding:10px 12px!important;background:rgba(120,53,15,.3);border:1px solid #fbbf24a8;border-radius:9px;font-weight:900;color:#fde68a;margin:8px 0;font-size:13px;letter-spacing:.02em}
-    #mp-room-code-line[hidden],#mp-room-confirm[hidden],#mp-race-forfeit[hidden],#mp-minimap[hidden]{display:none!important}
+    #mp-room-code-line[hidden],#mp-room-confirm[hidden],#mp-race-forfeit[hidden]{display:none!important}
     #mp-copy-inline{padding:2px 5px;cursor:pointer;border-radius:5px;background:#1e4463;color:#fff;border:1px solid #4aa4d5}
     #mp-departures{max-height:67px;overflow:auto;font-size:10px;color:#fbbf24;line-height:1.5}
     #mp-room-confirm,#mp-race-forfeit{position:fixed;inset:0;z-index:2800;background:#020617d9;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)}
@@ -2037,12 +2037,7 @@
     .mp-confirm-card h2{font-size:23px;color:#7dd3fc;margin:0 0 15px}.mp-confirm-card p{line-height:1.7;color:#e2e8f0}
     .mp-confirm-buttons{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
     .mp-confirm-card button{background:#0e7490;color:white;border:1px solid #67e8f9;border-radius:8px;padding:11px 16px;cursor:pointer;font-weight:800;margin:4px}
-    #mp-minimap{position:fixed;z-index:155;width:220px;max-width:43vw;color:#dbeafe;background:#061629ee;border:1px solid #38bdf8a8;border-radius:12px;box-shadow:0 8px 30px #000a;overflow:hidden;touch-action:none;user-select:none}
-    #mp-map-head{display:flex;align-items:center;justify-content:space-between;background:#0e2f48;padding:8px 9px;font:bold 10px Arial;letter-spacing:.05em;cursor:grab;touch-action:none}
-    #mp-map-head:active{cursor:grabbing}#mp-map-toggle{background:#1e4661;color:#e0f2fe;border:1px solid #5284a4;border-radius:5px;cursor:pointer}
-    #mp-map-canvas{display:block;width:100%;height:158px}#mp-map-list{padding:5px 8px;font:10px/1.35 Arial;max-height:62px;overflow:auto}
-    #mp-minimap.collapsed canvas,#mp-minimap.collapsed #mp-map-list{display:none}
-    @media(max-width:650px){#mp-minimap{width:160px}#mp-map-canvas{height:118px}}
+    @media(max-width:650px){#mp-map-canvas{height:118px}}
   </style>
   <link rel="icon" href="/afs-logo.png" type="image/png" sizes="512x512">
   <link rel="shortcut icon" href="/afs-logo.png" type="image/png">
@@ -2199,8 +2194,7 @@
     <div id="mp-scoreboard"></div><div id="mp-departures" aria-live="polite"></div>
   </div>
   <div id="mp-room-confirm" hidden role="dialog" aria-modal="true" aria-labelledby="mp-confirm-title"><div class="mp-confirm-card"><h2 id="mp-confirm-title">Join this server?</h2><p id="mp-confirm-description"></p><div class="mp-confirm-buttons"><button id="mp-confirm-proceed">Proceed</button><button id="mp-confirm-back">Return to Hangar</button></div></div></div>
-  <div id="mp-race-forfeit" hidden role="alertdialog" aria-modal="true"><div class="mp-confirm-card"><h2>YOU WIN!</h2><p>This match has been forfeited by the other players. You have won.</p><button id="mp-forfeit-hangar">Return to Hangar</button><button id="mp-forfeit-stay">Continue Flying</button></div></div>
-  <div id="mp-minimap" hidden><div id="mp-map-head"><span>✈ MULTIPLAYER RADAR</span><button id="mp-map-toggle" title="Minimize minimap">−</button></div><canvas id="mp-map-canvas" width="240" height="172" aria-label="Multiplayer pilot positions"></canvas><div id="mp-map-list" aria-live="off"></div></div>
+  <div id="mp-race-forfeit" hidden role="alertdialog" aria-modal="true"><div class="mp-confirm-card"><h2 id="mp-race-result-title">RACE RESULT</h2><p id="mp-race-result-message">Race complete.</p><button id="mp-forfeit-hangar">Return to Hangar</button><button id="mp-forfeit-stay">Continue Flying</button></div></div>
   <div id="mp-race-gate" hidden><div class="mp-gate-card"><strong id="mp-gate-title">WAITING FOR PILOTS</strong><p id="mp-gate-info">Race starts after the host launches it.</p><button id="mp-race-start" type="button" hidden>START RACE</button></div></div>
 
   <div id="hud">
