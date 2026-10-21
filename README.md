@@ -1,8 +1,18 @@
-# AFS Flight Simulator v1.0.2
+# AFS Flight Simulator — Multiplayer / Recovery Update (v1.0.2)
 
-Updates: private room hosts automatically receive a room code after connecting (no choosing a code); incoming aircraft use the same detailed aircraft builder and selected livery as the local game. Pilot usernames and aircraft/livery are displayed above their planes.
+## What's new
+- Recover after a crash: single-player **Restart Flight** at departure runway, or **Return to Hangar**. Multiplayer Free Flight **Respawn on Runway**; Ring Race **Continue from Last Checkpoint**.
+- Hangar navigation stays within the same browser page and preserves the PC/mobile device choice. Hold **Space for 3 seconds** while flying to return, with a progress animation; tap Space for pause, or use P.
+- More readable **IMPORTANT: Read controls first before flying** notice and hold-Space control.
+- Multiplayer room verification: when joining a private room, the server reports whether the room is a **Ring Race** or **Free Flight** before you confirm. Public joining and private room hosting stay automatic.
+- Pilots are labeled by username, aircraft type and Premium/Standard; private rooms show the code in the flight panel with a clipboard button.
+- Multiplayer-only draggable radar starts away from other visible cockpit/HUD controls, with player names and aircraft types (no liveries). Nearby and distant players remain visible on radar.
+- Departing pilots appear in the room's activity list; when all other opponents leave a running race, the remaining pilot wins by forfeit.
 
-## Deploy
-Commit the entire project to your existing GitHub repository. Vercel automatically deploys the game. Render auto-deploys the server if enabled. Public matchmaking and private room entry remain available. The host sees the automatically generated code in the in-game room HUD and toast and can share it with friends.
+## How to deploy the update
+Commit the **contents of this folder** (not the outer folder) into the root of your existing GitHub `AFS-Flight-Simulator` repository. Keep the existing paths including `public/afs-game.html`, `public/multiplayer.js`, and `realtime-server/server.js`. Don't create a duplicate nested folder. Vercel builds the Next.js game from your GitHub `main` branch. Render must also deploy the updated `realtime-server/` (enable Auto Deploy for that Render Web Service or manually deploy the new GitHub commit). Both services need the same compatible update.
 
-**Note:** 64-player room cap is a server setting, not a verified simultaneous 64-aircraft graphics benchmark.
+Your Vercel Production environment variable `AFS_MULTIPLAYER_SERVER_URL` should point to your own deployed `wss://...onrender.com/ws` service, not to a made-up address.
+
+## Validation
+JavaScript syntax and HTML ID checks passed. End-to-end multiplayer gameplay, varied viewport minimap placement, and real 64-player performance still require browser/load testing after deployment.

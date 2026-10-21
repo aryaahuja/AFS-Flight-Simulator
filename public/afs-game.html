@@ -2028,6 +2028,21 @@
     #mp-race-start {background:#0e7490;color:#fff;border:1px solid #67e8f9;padding:9px 17px;border-radius:8px;font-weight:900;cursor:pointer;pointer-events:auto;}
     @media(max-width:650px){.mp-form-grid{grid-template-columns:1fr;}#mp-hud{top:55px;right:6px;width:min(170px,39vw);padding:6px;font-size:10px;max-height:36vh;}#mp-scoreboard{max-height:80px;}#mp-race-gate{top:24%;}.mp-gate-card{padding:9px 13px;}#mp-gate-title{font-size:16px;}}
     @media(max-height:440px){#mp-hud{top:45px;max-height:40vh;}#mp-race-gate{top:27%;}}
+    .afs-controls-note{padding:10px 12px!important;background:rgba(120,53,15,.3);border:1px solid #fbbf24a8;border-radius:9px;font-weight:900;color:#fde68a;margin:8px 0;font-size:13px;letter-spacing:.02em}
+    #mp-room-code-line[hidden],#mp-room-confirm[hidden],#mp-race-forfeit[hidden],#mp-minimap[hidden]{display:none!important}
+    #mp-copy-inline{padding:2px 5px;cursor:pointer;border-radius:5px;background:#1e4463;color:#fff;border:1px solid #4aa4d5}
+    #mp-departures{max-height:67px;overflow:auto;font-size:10px;color:#fbbf24;line-height:1.5}
+    #mp-room-confirm,#mp-race-forfeit{position:fixed;inset:0;z-index:2800;background:#020617d9;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)}
+    .mp-confirm-card{width:min(420px,95vw);border:1px solid #38bdf8;border-radius:18px;padding:25px;text-align:center;background:#0b1d35;color:#fff;box-shadow:0 20px 70px #000c}
+    .mp-confirm-card h2{font-size:23px;color:#7dd3fc;margin:0 0 15px}.mp-confirm-card p{line-height:1.7;color:#e2e8f0}
+    .mp-confirm-buttons{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+    .mp-confirm-card button{background:#0e7490;color:white;border:1px solid #67e8f9;border-radius:8px;padding:11px 16px;cursor:pointer;font-weight:800;margin:4px}
+    #mp-minimap{position:fixed;z-index:155;width:220px;max-width:43vw;color:#dbeafe;background:#061629ee;border:1px solid #38bdf8a8;border-radius:12px;box-shadow:0 8px 30px #000a;overflow:hidden;touch-action:none;user-select:none}
+    #mp-map-head{display:flex;align-items:center;justify-content:space-between;background:#0e2f48;padding:8px 9px;font:bold 10px Arial;letter-spacing:.05em;cursor:grab;touch-action:none}
+    #mp-map-head:active{cursor:grabbing}#mp-map-toggle{background:#1e4661;color:#e0f2fe;border:1px solid #5284a4;border-radius:5px;cursor:pointer}
+    #mp-map-canvas{display:block;width:100%;height:158px}#mp-map-list{padding:5px 8px;font:10px/1.35 Arial;max-height:62px;overflow:auto}
+    #mp-minimap.collapsed canvas,#mp-minimap.collapsed #mp-map-list{display:none}
+    @media(max-width:650px){#mp-minimap{width:160px}#mp-map-canvas{height:118px}}
   </style>
   <link rel="icon" href="/afs-logo.png" type="image/png" sizes="512x512">
   <link rel="shortcut icon" href="/afs-logo.png" type="image/png">
@@ -2171,7 +2186,7 @@
       </div>
 
       <div class="menu-actions">
-        <p class="menu-help" id="menuControlHelp"><b>Controls:</b> Shift/F throttle, W/S pitch, A/D roll, Q/E yaw, G gear, [ / ] flaps, ; / ' trim, B parking brake, L landing lights, C or V camera, X reset view, R reverse thrust (airliners), right mouse orbit, H panel, Space or P pause. K engine, T ATC, N time, Y replay.</p>
+        <p class="afs-controls-note">IMPORTANT: Read controls first before flying.</p><p class="menu-help" id="menuControlHelp"><b>Controls:</b> Shift/F throttle, W/S pitch, A/D roll, Q/E yaw, G gear, [ / ] flaps, ; / ' trim, B parking brake, L landing lights, C or V camera, X reset view, R reverse thrust (airliners), right mouse orbit, H panel, Tap Space or P pause; hold Space 3 seconds to return to hangar. K engine, T ATC, N time, Y replay.</p>
         <button id="startButton" class="btn-primary" disabled>Take Command</button>
       </div>
     </div>
@@ -2179,10 +2194,13 @@
 
   <div id="mp-hud" aria-live="polite" hidden>
     <div class="mp-hud-head"><span id="mp-room-indicator">MULTIPLAYER</span><button id="mp-copy-room" type="button" hidden title="Copy generated private room code">COPY CODE</button><button id="mp-leave" title="Leave multiplayer" type="button">LEAVE</button></div>
-    <div class="mp-hud-line"><b id="mp-count">1/64</b><span id="mp-ping">Online</span></div>
+    <div class="mp-hud-line" id="mp-room-code-line" hidden><span>Room code</span><b id="mp-code-text">—</b><button id="mp-copy-inline" title="Copy room code" aria-label="Copy room code">📋</button></div><div class="mp-hud-line"><b id="mp-count">1/64</b><span id="mp-ping">Online</span></div>
     <div id="mp-status">Connected</div>
-    <div id="mp-scoreboard"></div>
+    <div id="mp-scoreboard"></div><div id="mp-departures" aria-live="polite"></div>
   </div>
+  <div id="mp-room-confirm" hidden role="dialog" aria-modal="true" aria-labelledby="mp-confirm-title"><div class="mp-confirm-card"><h2 id="mp-confirm-title">Join this server?</h2><p id="mp-confirm-description"></p><div class="mp-confirm-buttons"><button id="mp-confirm-proceed">Proceed</button><button id="mp-confirm-back">Return to Hangar</button></div></div></div>
+  <div id="mp-race-forfeit" hidden role="alertdialog" aria-modal="true"><div class="mp-confirm-card"><h2>YOU WIN!</h2><p>This match has been forfeited by the other players. You have won.</p><button id="mp-forfeit-hangar">Return to Hangar</button><button id="mp-forfeit-stay">Continue Flying</button></div></div>
+  <div id="mp-minimap" hidden><div id="mp-map-head"><span>✈ MULTIPLAYER RADAR</span><button id="mp-map-toggle" title="Minimize minimap">−</button></div><canvas id="mp-map-canvas" width="240" height="172" aria-label="Multiplayer pilot positions"></canvas><div id="mp-map-list" aria-live="off"></div></div>
   <div id="mp-race-gate" hidden><div class="mp-gate-card"><strong id="mp-gate-title">WAITING FOR PILOTS</strong><p id="mp-gate-info">Race starts after the host launches it.</p><button id="mp-race-start" type="button" hidden>START RACE</button></div></div>
 
   <div id="hud">
@@ -2204,7 +2222,7 @@
         <div class="mini-row"><span>Rings</span><b id="ringsText">0 / 0</b></div>
       </div>
       <div id="controls-panel" class="hud-card">
-        <div class="panel-title"><span>All Controls</span><span id="controlsHideHint">H Hide</span></div>
+        <p class="afs-controls-note">IMPORTANT: Read controls first before flying.</p><div class="panel-title"><span>All Controls</span><span id="controlsHideHint">H Hide</span></div>
         <div class="pc-guide">
           <div class="controls-subhead">Flight</div>
           <div class="mini-row"><span>Throttle Increase</span><span class="key">Shift</span></div>
@@ -2227,7 +2245,8 @@
           <div class="mini-row"><span>Orbit Camera</span><span class="key">Right Mouse</span></div>
         <div class="mini-row"><span>Camera Zoom</span><span class="key">Mouse Wheel</span></div>
           <div class="mini-row"><span>Hide Controls</span><span class="key">H</span></div>
-          <div class="mini-row"><span>Pause / Resume</span><span><span class="key">Space</span> <span class="key">P</span></span></div>
+          <div class="mini-row"><span>Pause / Resume</span><span class="key">P / Tap Space</span></div>
+          <div class="mini-row"><span>Return to Hangar</span><span class="key">Hold Space 3 sec</span></div>
         </div>
         <div class="mobile-guide">
           <div class="controls-subhead">Touch Flight</div>
@@ -2395,7 +2414,7 @@
     <div class="modal-card glass">
       <h2>Paused</h2>
       <p id="pauseHelp">Press Space or P to continue. Use C to switch cameras, R to reset the view, and G to toggle landing gear.</p>
-      <button class="btn-primary" id="resumeBtn">Resume Flight</button>
+      <button class="btn-primary" id="resumeBtn">Resume Flight</button><button class="btn-secondary" onclick="returnToHangar()">Return to Hangar</button>
     </div>
   </div>
 
@@ -2406,18 +2425,26 @@
       <div class="stats-grid" id="statsGrid"></div>
       <button class="btn-success" id="continueBtn">Continue Flight</button>
       <button class="btn-secondary" id="replayLandingBtn">Replay Landing</button>
-      <button class="btn-secondary" onclick="location.reload()" style="margin-left: 10px;">Return to Hangar</button>
+      <button class="btn-secondary" onclick="returnToHangar()" style="margin-left: 10px;">Return to Hangar</button>
     </div>
   </div>
 
+  <div id="afs-hangar-hold" aria-hidden="true"><span>RETURNING TO HANGAR</span><div><i id="afs-hangar-progress"></i></div><small>Keep holding SPACE for 3 seconds</small></div>
   <div id="crash">
     <div class="modal-card glass">
       <h2>Aircraft Lost</h2>
       <p id="crashReason">Impact exceeded safe limits.</p>
-      <button class="btn-danger" onclick="location.reload()">Restart Mission</button>
+      <button class="btn-primary" id="crashRecoverBtn" onclick="recoverFromCrash()">Restart Flight</button>
+      <button class="btn-secondary" onclick="returnToHangar()">Return to Hangar</button>
     </div>
   </div>
 
+  <style>
+    .afs-controls-note{color:#fde68a;font-size:13px;font-weight:800;padding:9px 10px;line-height:1.5;border:1px solid #f59e0b77;background:#78350f4d;border-radius:9px;margin:0 0 10px}
+    #controls-panel .mini-row{font-size:13px;line-height:1.55}#controls-panel .key{font-weight:800}
+    #afs-hangar-hold{display:none;position:fixed;z-index:2500;left:50%;bottom:16%;transform:translateX(-50%);width:min(340px,88vw);padding:17px 21px;background:#06152bea;border:1px solid #38bdf8a8;border-radius:15px;text-align:center;color:#f8fafc;font:700 13px Arial;box-shadow:0 15px 60px #000b;pointer-events:none}
+    #afs-hangar-hold div{height:9px;border-radius:9px;background:#314056;margin:12px 0;overflow:hidden}#afs-hangar-hold i{display:block;width:0;height:100%;background:#38bdf8;border-radius:9px}#afs-hangar-hold small{font-weight:400;color:#cbd5e1}
+  </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
     'use strict';
@@ -6132,7 +6159,7 @@
         controlsHidden = false;
         $('controls-panel').classList.remove('hidden');
         $('controlsHideHint').textContent = 'H Hide';
-        $('menuControlHelp').innerHTML = "<b>Controls:</b> Shift/F throttle, W/S pitch, A/D roll, Q/E yaw, G gear, [ / ] flaps, ; / ' trim, B parking brake, L landing lights, C or V camera, X reset view, R reverse thrust (airliners), right mouse orbit, H panel, Space or P pause. K engine, T ATC, N time, Y replay.";
+        $('menuControlHelp').innerHTML = "<b>Controls:</b> Shift/F throttle, W/S pitch, A/D roll, Q/E yaw, G gear, [ / ] flaps, ; / ' trim, B parking brake, L landing lights, C or V camera, X reset view, R reverse thrust (airliners), right mouse orbit, H panel, Tap Space or P pause; hold Space 3 seconds to return to hangar. K engine, T ATC, N time, Y replay.";
         $('pauseHelp').textContent = 'Press Space or P to continue. Use C to switch cameras, X to reset the view, and G to toggle landing gear.';
       }
     }
@@ -6508,6 +6535,7 @@
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') inputs.shift = down;
       if (e.code === 'KeyF') inputs.f = down;
 
+      if(e.code==='Space'||k===' '){e.preventDefault();handleHangarSpace(down,e.repeat);return;}
       if (!down) return;
       if(k==='g')toggleGear();if(k==='k')toggleEngineStart();if(k==='j')cycleFailure();if(k==='t')requestATC();if(k==='y')toggleReplay();
       if (k === '[') changeFlaps(-1);
@@ -6520,9 +6548,45 @@
       if (k === 'x') resetCameraOrbit();
       if (down && !e.repeat && k === 'r' && active && !isBoeingTransport() && !isAirbusTransport()) showToast('This aircraft has no thrust reversers');
       if (k === 'h') toggleControls();
-      if ((k === ' ' || e.code === 'Space' || k === 'p') && !e.repeat) { e.preventDefault(); if (active && !crashed) togglePause(); }
+      if(k==='p'&&!e.repeat){e.preventDefault();if(active&&!crashed)togglePause();}
     }
 
+    let hangarHoldStart=0,hangarHoldTimer=null,hangarHoldTick=null,hangarHoldCompleted=false;
+    function clearHangarHold(){clearTimeout(hangarHoldTimer);clearInterval(hangarHoldTick);hangarHoldTimer=null;hangarHoldTick=null;hangarHoldStart=0;$('afs-hangar-hold').style.display='none';$('afs-hangar-progress').style.width='0%';}
+    function handleHangarSpace(down,repeat){
+      if(down){if(repeat||hangarHoldStart||!active||crashed)return;hangarHoldCompleted=false;hangarHoldStart=performance.now();$('afs-hangar-hold').style.display='block';
+        hangarHoldTick=setInterval(()=>{if(hangarHoldStart)$('afs-hangar-progress').style.width=Math.min(100,(performance.now()-hangarHoldStart)/30)+'%';},35);
+        hangarHoldTimer=setTimeout(()=>{hangarHoldCompleted=true;clearHangarHold();returnToHangar();},3000);
+      }else{const tapped=hangarHoldStart>0&&performance.now()-hangarHoldStart<550&&!hangarHoldCompleted;clearHangarHold();if(tapped&&active&&!crashed)togglePause();}
+    }
+    function returnToHangar(){
+      clearHangarHold();if(window.AFSMP)window.AFSMP.cleanup();
+      active=false;paused=false;crashed=false;missionFinished=false;systems.replay=false;
+      if(plane){scene.remove(plane);plane=null;}rings.forEach(r=>scene.remove(r));rings.length=0;ringsPassed=0;
+      $('crash').style.display='none';$('results').style.display='none';$('pause-screen').style.display='none';
+      $('hud').style.display='none';$('mobile-controls').classList.remove('active');$('cockpit-shell').classList.remove('visible');$('hud').classList.remove('cockpit-mode');
+      document.body.classList.remove('flight-running','afs-online');$('main-menu').style.display='flex';
+      if(typeof clearFlightInputs==='function')clearFlightInputs();updateAudio(0,0);
+      // Device selection is deliberately retained. Never reload the document.
+    }
+    function recoverFromCrash(){
+      const online=window.AFSMP&&window.AFSMP.isOnline();
+      const inRace=online&&window.AFSMP.mode()==='race';
+      const checkpoint=inRace?window.AFSMP.lastCheckpoint():0;
+      $('crash').style.display='none';
+      if(plane){scene.remove(plane);plane=null;}
+      start();
+      if(online){window.AFSMP.onRespawn();if(inRace&&checkpoint>0&&rings[checkpoint-1]){
+        const ref=rings[Math.min(checkpoint,rings.length-1)];
+        const prev=rings[Math.max(0,checkpoint-1)];
+        plane.position.copy(prev.position);plane.position.y+=25;
+        const delta=new THREE.Vector3().subVectors(ref.position,prev.position);delta.y=0;if(delta.lengthSq()>1){plane.rotation.set(0,Math.atan2(delta.x,delta.z),0);}
+        state.vel.set(0,0,0);ringsPassed=checkpoint;
+        rings.forEach((r,i)=>{r.userData.passed=i<checkpoint;r.visible=i>=checkpoint;});refreshRingRunVisuals();
+        showToast('Resumed from checkpoint '+checkpoint);
+      }}
+      updateAudio(0,0);
+    }
     function start() {
       $('main-menu').style.display = 'none';
       $('hud').style.display = 'block';
@@ -6561,6 +6625,7 @@
       resetGPWS();
       aircraft = { ...aircraftSpecs[selection] };
       systems.fuelMaxKg=aircraft.fuelCapacity||Math.max(4000,aircraft.mass*.20);systems.fuelKg=systems.fuelMaxKg;systems.enginesRunning=true;systems.failure='none';replayBuffer=[];replayAccumulator=0;replayCursor=0;systems.replay=false;
+      if(plane)scene.remove(plane);
       plane = selection==='737'?create737():selection==='787'?create787():selection==='A320'?createA320():selection==='A350'?createA350():selection==='F18'?createF18():selection==='F22'?createF22():createB2();
       scene.add(plane);
       const spawnAirport = gameMode==='arcade' ? getAirport(departureAirportId) : getAirport('startway');
@@ -7919,6 +7984,7 @@
       $('hud').classList.remove('cockpit-mode');
       $('crashReason').textContent = reason;
       if(window.AFSMP)window.AFSMP.crashed();
+      $('crashRecoverBtn').textContent=window.AFSMP&&window.AFSMP.isOnline()?(window.AFSMP.mode()==='race'?'Continue from Last Checkpoint':'Respawn on Runway'):'Restart Flight';
       $('crash').style.display = 'flex';
       updateAudio(0, 0);
     }

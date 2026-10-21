@@ -58,7 +58,7 @@ function getPublicRoom(mode,request){
   throw Error('Public servers are full. Please try creating a private room.');
 }
 function publicPlayer(p){
-  return {id:p.id,name:p.name,aircraft:p.aircraft,livery:p.livery,position:p.position,rotation:p.rotation,speed:p.speed,progress:p.progress,finished:p.finished,finishedAt:p.finishedAt,dnf:p.dnf};
+  return {id:p.id,name:p.name,aircraft:p.aircraft,livery:p.livery,position:p.position,rotation:p.rotation,speed:p.speed,progress:p.progress,finished:p.finished,finishedAt:p.finishedAt,dnf:p.dnf,premium:p.premium};
 }
 function roomPlayers(room){return [...room.players.values()].map(publicPlayer);}
 function broadcast(room,obj){const body=JSON.stringify(obj);for(const p of room.players.values())wsSend(p.ws,body);}
@@ -89,7 +89,7 @@ function hello(ws,m){
     if(room.mode!==mode)throw Error(`This is a ${room.mode==='race'?'Ring Race':'Free Flight'} room. Choose that mode to join.`);
   }
   if(room.players.size>=MAX_PLAYERS)throw Error(`Room is full (${MAX_PLAYERS} pilots).`);
-  const player={ws,id:randomUUID(),name:safeName(m,room),aircraft:allowedAirframes.has(m.aircraft)?m.aircraft:'A320',livery:str(m.livery,40),position:null,rotation:null,speed:0,progress:0,total:0,finished:false,finishedAt:0,dnf:false,lastState:0,lastProgress:0,joinedAt:Date.now()};
+  const player={ws,id:randomUUID(),name:safeName(m,room),aircraft:allowedAirframes.has(m.aircraft)?m.aircraft:'A320',livery:str(m.livery,40),premium:!!m.premium,position:null,rotation:null,speed:0,progress:0,total:0,finished:false,finishedAt:0,dnf:false,lastState:0,lastProgress:0,joinedAt:Date.now()};
   room.players.set(player.id,player);room.lastActive=Date.now();clients.set(ws,{room,player});
   if(!room.hostId)room.hostId=player.id;
   send(ws,{type:'welcome',id:player.id,code:room.code,mode:room.mode,world:room.world,hostId:room.hostId,maxPlayers:MAX_PLAYERS,players:roomPlayers(room),raceState:room.raceState,startAt:room.startAt});
@@ -138,12 +138,31 @@ function finishFromPlayer(room,p,m){
     room.raceState='finished';broadcastRoom(room);
   }
 }
+function probeRoom(ws,m){
+  const kind=['public','create','join'].includes(m.roomKind)?m.roomKind:'public';
+  const requested=modes.has(m.mode)?m.mode:'free';
+  if(kind==='join'){
+    const code=str(m.code,12).toUpperCase();const room=rooms.get(code);
+    if(!room){send(ws,{type:'error',message:'Room not found. Check the private room code.'});return;}
+    send(ws,{type:'room_info',mode:room.mode,code:room.code,players:room.players.size,roomKind:kind,full:room.players.size>=MAX_PLAYERS});
+  }else if(kind==='public'){
+    const room=[...rooms.values()].find(r=>r.code.startsWith('PUBLIC-')&&r.mode===requested&&r.players.size<MAX_PLAYERS&&(requested==='free'||r.raceState==='waiting'));
+    send(ws,{type:'room_info',mode:requested,code:room?.code||'PUBLIC',players:room?.players.size||0,roomKind:kind,full:false});
+  }else send(ws,{type:'room_info',mode:requested,code:'AUTO',players:0,roomKind:kind,full:false});
+}
 function disconnect(ws){
   const found=clients.get(ws);if(!found)return;
   clients.delete(ws);const {room,player}=found;room.players.delete(player.id);room.lastActive=Date.now();
   if(room.hostId===player.id)room.hostId=room.players.keys().next().value||null;
   if(room.players.size===0){if(room.raceTimer)clearTimeout(room.raceTimer);rooms.delete(room.code);}
-  else{if(room.mode==='race'&&room.raceState==='running'&&[...room.players.values()].every(p=>p.finished||p.dnf))room.raceState='finished';broadcastRoom(room);}
+  else{
+    broadcast(room,{type:'pilot_left',name:player.name,aircraft:player.aircraft});
+    if(room.mode==='race'&&(room.raceState==='running'||room.raceState==='countdown')){
+      if(room.players.size===1){const survivor=[...room.players.values()][0];if(!survivor.finished&&!survivor.dnf){survivor.finished=true;survivor.finishedAt=Date.now();room.raceState='finished';if(room.raceTimer){clearTimeout(room.raceTimer);room.raceTimer=null;}broadcast(room,{type:'race_forfeit_win',winnerId:survivor.id});}}
+      else if([...room.players.values()].every(p=>p.finished||p.dnf))room.raceState='finished';
+    }
+    broadcastRoom(room);
+  }
 }
 wss.on('connection',ws=>{
   ws.alive=true;ws.on('pong',()=>ws.alive=true);
@@ -151,6 +170,7 @@ wss.on('connection',ws=>{
     if(isBinary)return;
     try{
       const m=JSON.parse(raw.toString());if(!m||typeof m.type!=='string')return;
+      if(m.type==='room_probe'){probeRoom(ws,m);return;}
       if(m.type==='hello'){hello(ws,m);return;}
       const found=clients.get(ws);if(!found)return;
       const {room,player:p}=found;
@@ -159,6 +179,7 @@ wss.on('connection',ws=>{
       else if(m.type==='finish')finishFromPlayer(room,p,m);
       else if(m.type==='start_race')startRace(room,p);
       else if(m.type==='dnf'&&room.mode==='race'){p.dnf=true;broadcastRoom(room);}
+      else if(m.type==='respawn'){p.dnf=false;p.position=null;p.rotation=null;p.lastState=0;broadcastRoom(room);}
       else if(m.type==='ping')send(ws,{type:'pong',t:Number(m.t)||0});
     }catch(err){send(ws,{type:'error',message:str(err.message||'Invalid request',170)});}
   });
