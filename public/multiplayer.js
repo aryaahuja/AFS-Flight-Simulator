@@ -115,35 +115,14 @@
     if(location.protocol==='https:'&&/^ws:\/\//i.test(url)){showError('Your Vercel website requires a secure wss:// multiplayer connection.');return;}
     let room=ui.roomKind.value==='join'?ui.roomCode.value.toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,12):'';
     if(ui.roomKind.value==='join'&&!room){showError('Enter your friend\'s private room code.');return;}
-    // Identify the room BEFORE entering it. Private join reads the server's actual mode.
-    mp.connecting=true;text(ui.menu,'Identifying server…');ui.help.style.color='';
+    // Connect once. The welcome packet identifies the actual room mode.
+    // A separate room_probe could hang forever against a server not yet updated.
+    mp.connecting=true;
+    text(ui.menu,ui.roomKind.value==='join'?'Connecting and identifying room…':'Connecting to multiplayer…');
+    ui.help.style.color='';
     el('startButton').disabled=true;
-    try{
-      const info=await new Promise((resolve,reject)=>{
-        const probe=new WebSocket(url);let finished=false;
-        const timeout=setTimeout(()=>{if(!finished){finished=true;probe.close();reject(new Error('Server identification timed out.'));}},18000);
-        probe.onopen=()=>probe.send(JSON.stringify({type:'room_probe',roomKind:ui.roomKind.value,code:room,mode:ui.roomKind.value==='join'?'free':ui.mode.value}));
-        probe.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(_){return;}if(finished)return;
-          if(m.type==='room_info'||m.type==='error'){finished=true;clearTimeout(timeout);probe.close();if(m.type==='error')reject(new Error(m.message));else resolve(m);}};
-        probe.onerror=()=>{if(!finished){finished=true;clearTimeout(timeout);reject(new Error('Unable to identify server.'));}};
-        probe.onclose=()=>{if(!finished){finished=true;clearTimeout(timeout);reject(new Error('Server closed the identification connection.'));}};
-      });
-      if(info.full)throw new Error('That multiplayer room is full.');
-      const approved=ui.roomKind.value!=='join'?true:await new Promise(resolve=>{
-        const modal=el('mp-room-confirm');const title=el('mp-confirm-title');const body=el('mp-confirm-description');
-        const modeTitle=info.mode==='race'?'RING RACE':'FREE FLIGHT';
-        title.textContent=modeTitle+' SERVER';
-        body.textContent=`${info.roomKind==='create'?'You are creating a new private':info.roomKind==='join'?'You are joining a private':'You are joining a public'} ${modeTitle.toLowerCase()} server. ${info.players} pilot(s) currently inside. Do you want to proceed or return to hangar?`;
-        modal.hidden=false;
-        const yes=el('mp-confirm-proceed'),no=el('mp-confirm-back');
-        const settle=answer=>{modal.hidden=true;yes.onclick=null;no.onclick=null;resolve(answer);};
-        yes.onclick=()=>settle(true);no.onclick=()=>settle(false);
-      });
-      if(!approved){text(ui.menu,'Join cancelled · back at hangar');return;}
-      // A private room has one authoritative mode; never trust the user's old selection.
-      if(info.mode!==ui.mode.value||ui.roomKind.value==='join'){ui.mode.value=info.mode;onlineChoice=info.mode;gameMode=info.mode==='race'?'arcade':'realistic';refreshSelection();}
-      await enterRoom(url,room,username);
-    }catch(err){showError(err.message||'Unable to join multiplayer');}
+    try{await enterRoom(url,room,username);}
+    catch(err){showError(err.message||'Unable to join multiplayer');}
     finally{mp.connecting=false;updateStartButton();}
   }
 
@@ -161,6 +140,21 @@
         };
         ws.onclose=()=>{clearTimeout(timeout);if(mp.id){text(ui.status,'Server disconnected — flight continues offline');mp.id='';ui.ping.textContent='Offline';}else reject(new Error('Server closed the connection.'));};
       });
+      // Private rooms announce their own authoritative mode, without a preflight probe.
+      if(ui.roomKind.value==='join'){
+        const approved=await new Promise(resolve=>{
+          const modal=el('mp-room-confirm'),title=el('mp-confirm-title'),body=el('mp-confirm-description');
+          const modeTitle=reply.mode==='race'?'RING RACE':'FREE FLIGHT';
+          title.textContent=modeTitle+' SERVER';
+          body.textContent=`This private room is ${modeTitle}. ${Math.max(0,(reply.players||[]).length-1)} other pilot(s) are inside. Do you want to proceed or return to hangar?`;
+          modal.hidden=false;
+          const yes=el('mp-confirm-proceed'),no=el('mp-confirm-back');
+          const settle=answer=>{modal.hidden=true;yes.onclick=null;no.onclick=null;resolve(answer);};
+          yes.onclick=()=>settle(true);no.onclick=()=>settle(false);
+        });
+        if(!approved){ws.onclose=null;ws.close();mp.ws=null;text(ui.menu,'Join cancelled · back at hangar');return;}
+        ui.mode.value=reply.mode;onlineChoice=reply.mode;
+      }
       try{localStorage.setItem('afsRealtimeUrl',url);}catch(_){ }
       mp.id=reply.id;mp.room=reply.code;copyRoomButton.hidden=mp.room.startsWith('PUBLIC');mp.hostId=reply.hostId;mp.max=reply.maxPlayers||64;mp.mode=reply.mode;mp.state=reply.raceState||'waiting';mp.roster=reply.players||[];
       mp.raceStartAt=reply.startAt||0;mp.raceStarted=reply.raceState==='running';mp.hasFinished=false;mp.lastCheckpoint=0;mp.forfeitShown=false;mp.departures=[];

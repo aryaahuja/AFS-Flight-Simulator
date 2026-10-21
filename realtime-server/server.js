@@ -86,7 +86,8 @@ function hello(ws,m){
   else {
     const code=str(m.code,12).toUpperCase();room=rooms.get(code);
     if(!room)throw Error('Room not found. Check the private room code.');
-    if(room.mode!==mode)throw Error(`This is a ${room.mode==='race'?'Ring Race':'Free Flight'} room. Choose that mode to join.`);
+    // The private room owns the mode. Never require the joining pilot to guess it.
+    // Clients learn it from the welcome message before starting their flight.
   }
   if(room.players.size>=MAX_PLAYERS)throw Error(`Room is full (${MAX_PLAYERS} pilots).`);
   const player={ws,id:randomUUID(),name:safeName(m,room),aircraft:allowedAirframes.has(m.aircraft)?m.aircraft:'A320',livery:str(m.livery,40),premium:!!m.premium,position:null,rotation:null,speed:0,progress:0,total:0,finished:false,finishedAt:0,dnf:false,lastState:0,lastProgress:0,joinedAt:Date.now()};
