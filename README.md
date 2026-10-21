@@ -16,3 +16,6 @@ Your Vercel Production environment variable `AFS_MULTIPLAYER_SERVER_URL` should 
 
 ## Validation
 JavaScript syntax and HTML ID checks passed. End-to-end multiplayer gameplay, varied viewport minimap placement, and real 64-player performance still require browser/load testing after deployment.
+
+### Join Private Room fix
+When Join Private Room is selected, the multiplayer mode cards are hidden. Enter the room code; the server detects the room mode and shows a confirmation before joining. Public and Host still require a mode choice.

@@ -22,7 +22,10 @@
   const originalUpdateStartButton=updateStartButton;
   updateStartButton=function(){
     originalUpdateStartButton();
-    if(mp.selected && !validPilotName()) el('startButton').disabled=true;
+    if(mp.selected){
+      const allowedMode=ui.roomKind.value==='join'||!!onlineChoice;
+      el('startButton').disabled=!(selection && selectedLivery && validPilotName() && allowedMode);
+    }
   };
   ui.name.addEventListener('input',()=>{
     if(validPilotName() && ui.menu.textContent.includes('username')) {ui.menu.textContent='Not connected';ui.help.textContent='Choose a multiplayer mode and enter the server.';ui.help.style.color='';}
@@ -35,15 +38,17 @@
     ui.single.setAttribute('aria-pressed',String(!mp.selected));
     ui.tile.setAttribute('aria-pressed',String(mp.selected));
     ui.singleModes.hidden=mp.selected;
-    ui.multiModes.hidden=!mp.selected;
+    ui.multiModes.hidden=!mp.selected||ui.roomKind.value==='join';
+    const joinExisting=mp.selected&&ui.roomKind.value==='join';
     ui.heading.textContent=mp.selected?'2 · Select Multiplayer Mode':'2 · Select Single-Player Mode';
+    ui.heading.hidden=joinExisting;
     ui.setup.classList.toggle('open',mp.selected);
     ui.roomWrap.hidden=ui.roomKind.value!=='join';
     ui.roomCode.required=ui.roomKind.value==='join';
     el('startButton').textContent=mp.selected?'Enter Multiplayer':'Take Command';
     if(mp.selected){
       ui.mode.value=onlineChoice||'free';
-      gameMode=onlineChoice?(onlineChoice==='race'?'arcade':'realistic'):null;
+      gameMode=joinExisting?'realistic':onlineChoice?(onlineChoice==='race'?'arcade':'realistic'):null;
     }else{
       gameMode=singleChoice;
     }
@@ -54,6 +59,7 @@
       b.setAttribute('aria-pressed',String(active));
     });
     updateRouteSelectorVisibility();
+    if(mp.selected){ui.help.textContent=joinExisting?'Enter your friend’s room code. The server will identify Free Flight or Ring Race automatically.':'Choose Free Flight or Ring Race, enter your pilot name, and choose a plane and livery.';ui.help.style.color='';}
     updateStartButton();
   }
   ui.single.addEventListener('click',()=>{mp.selected=false;refreshSelection();});
@@ -72,6 +78,7 @@
     ui.roomWrap.hidden=!joiningPrivate;
     ui.roomCode.required=joiningPrivate;
     if(!joiningPrivate)ui.roomCode.value='';
+    refreshSelection();
   });
   el('mp-leave').addEventListener('click',()=>{if(window.confirm('Leave multiplayer and return to hangar?'))returnToHangar();});
   const copyRoomButton=el('mp-copy-room');
@@ -96,7 +103,7 @@
   },true);
 
   async function connectAndStart(){
-    if(!onlineChoice){showError('Select Free Flight or Ring Race before joining multiplayer.');return;}
+    if(ui.roomKind.value!=='join'&&!onlineChoice){showError('Select Free Flight or Ring Race before joining multiplayer.');return;}
     const username=safe(ui.name.value).replace(/[<>"'`]/g,'');
     if(username.length<2){showError('You must enter a username (2–20 characters) before joining multiplayer.');ui.name.focus();return;}
     let url=ui.url.value.trim();
@@ -115,7 +122,7 @@
       const info=await new Promise((resolve,reject)=>{
         const probe=new WebSocket(url);let finished=false;
         const timeout=setTimeout(()=>{if(!finished){finished=true;probe.close();reject(new Error('Server identification timed out.'));}},18000);
-        probe.onopen=()=>probe.send(JSON.stringify({type:'room_probe',roomKind:ui.roomKind.value,code:room,mode:ui.mode.value}));
+        probe.onopen=()=>probe.send(JSON.stringify({type:'room_probe',roomKind:ui.roomKind.value,code:room,mode:ui.roomKind.value==='join'?'free':ui.mode.value}));
         probe.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(_){return;}if(finished)return;
           if(m.type==='room_info'||m.type==='error'){finished=true;clearTimeout(timeout);probe.close();if(m.type==='error')reject(new Error(m.message));else resolve(m);}};
         probe.onerror=()=>{if(!finished){finished=true;clearTimeout(timeout);reject(new Error('Unable to identify server.'));}};
@@ -134,7 +141,7 @@
       });
       if(!approved){text(ui.menu,'Join cancelled · back at hangar');return;}
       // A private room has one authoritative mode; never trust the user's old selection.
-      if(info.mode!==ui.mode.value){ui.mode.value=info.mode;onlineChoice=info.mode;gameMode=info.mode==='race'?'arcade':'realistic';refreshSelection();}
+      if(info.mode!==ui.mode.value||ui.roomKind.value==='join'){ui.mode.value=info.mode;onlineChoice=info.mode;gameMode=info.mode==='race'?'arcade':'realistic';refreshSelection();}
       await enterRoom(url,room,username);
     }catch(err){showError(err.message||'Unable to join multiplayer');}
     finally{mp.connecting=false;updateStartButton();}
