@@ -2012,6 +2012,18 @@
     .mp-server-advanced label {margin-top:9px;}
     .mp-server-advanced p,.mp-inline-note{font-size:11px;line-height:1.45;color:#b3c9d9;margin:9px 0 0;}
     #mp-hud {position:fixed;z-index:160;top:76px;right:12px;width:min(242px,44vw);background:rgba(4,16,30,.87);color:#e7f4ff;border:1px solid rgba(56,189,248,.45);border-radius:12px;padding:9px 10px;box-shadow:0 4px 20px #0005;backdrop-filter:blur(12px);font-size:11px;pointer-events:auto;max-height:44vh;overflow:auto;}
+    /* Compact multiplayer status: keeps the parking brake, airbrake and throttle unobstructed. */
+    #mp-hud {width:min(168px,36vw);top:72px;right:8px;padding:6px 7px;max-height:min(200px,27vh);font-size:10px;border-radius:9px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;}
+    #mp-hud .mp-hud-head {font-size:10px;gap:3px;flex-wrap:wrap;}
+    #mp-hud .mp-hud-line {margin:3px 0;gap:3px;align-items:center;}
+    #mp-hud #mp-status {font-size:9px;line-height:1.2;}
+    #mp-hud #mp-scoreboard {max-height:70px;margin-top:3px;}
+    #mp-hud .mp-rank {padding:2px 0;gap:3px;grid-template-columns:15px minmax(0,1fr) auto;font-size:9px;}
+    #mp-hud #mp-departures {max-height:28px;font-size:9px;}
+    #mp-hud #mp-leave {padding:2px 4px;font-size:9px;}
+    #mp-hud #mp-copy-room {font-size:9px;max-width:100%;}
+    @media(max-width:650px) {#mp-hud {top:48px;right:5px;width:min(136px,36vw);max-height:min(130px,24vh);padding:5px;font-size:9px;}#mp-hud #mp-scoreboard{max-height:45px;}#mp-hud .mp-hud-head{font-size:9px;}}
+    @media(max-height:440px) {#mp-hud{top:43px;max-height:90px;}}
     #mp-hud[hidden],#mp-race-gate[hidden] {display:none!important;}
     .mp-hud-head {display:flex;justify-content:space-between;align-items:center;gap:5px;font-size:12px;font-weight:900;color:#7dd3fc;}
     #mp-leave {background:rgba(225,70,77,.17);color:#fda4af;border:1px solid #be455b;border-radius:6px;padding:4px 6px;cursor:pointer;font-size:9px;font-weight:800;}
