@@ -126,12 +126,12 @@
     finally{mp.connecting=false;updateStartButton();}
   }
 
-  async function enterRoom(url,room,username){
+  async function enterRoom(url,room,username,detectedMode=null){
     try{
       const ws=new WebSocket(url);mp.ws=ws;
       const reply=await new Promise((resolve,reject)=>{
         const timeout=setTimeout(()=>reject(new Error('Connection timed out. Check that the real-time server is running.')),30000);
-        ws.onopen=()=>ws.send(JSON.stringify({type:'hello',roomKind:ui.roomKind.value,code:room,mode:ui.mode.value,name:username,aircraft:selection,livery:selectedLivery,premium:!!premiumEnabled,departure:departureAirportId,arrival:arrivalAirportId,weather:{time:timeOfDay,clouds:cloudDensity,rain:rainEnabled}}));
+        ws.onopen=()=>ws.send(JSON.stringify({type:'hello',roomKind:ui.roomKind.value,code:room,mode:detectedMode||ui.mode.value,name:username,aircraft:selection,livery:selectedLivery,premium:!!premiumEnabled,departure:departureAirportId,arrival:arrivalAirportId,weather:{time:timeOfDay,clouds:cloudDensity,rain:rainEnabled}}));
         ws.onerror=()=>{clearTimeout(timeout);reject(new Error('Could not reach the multiplayer server.'));};
         ws.onmessage=event=>{
           let message;try{message=JSON.parse(event.data);}catch(_){return;}
@@ -144,9 +144,9 @@
       if(ui.roomKind.value==='join'){
         const approved=await new Promise(resolve=>{
           const modal=el('mp-room-confirm'),title=el('mp-confirm-title'),body=el('mp-confirm-description');
-          const modeTitle=reply.mode==='race'?'RING RACE':'FREE FLIGHT';
-          title.textContent=modeTitle+' SERVER';
-          body.textContent=`This private room is ${modeTitle}. ${Math.max(0,(reply.players||[]).length-1)} other pilot(s) are inside. Do you want to proceed or return to hangar?`;
+          const modeTitle=reply.mode==='race'?'Ring Race':'Free Flight';
+          title.textContent='Join '+modeTitle+'?';
+          body.textContent=`This server is ${modeTitle}. Do you want to proceed or return to hangar? ${Math.max(0,(reply.players||[]).length-1)} other pilot(s) are inside.`;
           modal.hidden=false;
           const yes=el('mp-confirm-proceed'),no=el('mp-confirm-back');
           const settle=answer=>{modal.hidden=true;yes.onclick=null;no.onclick=null;resolve(answer);};
@@ -183,7 +183,21 @@
       text(ui.menu,mp.room.startsWith('PUBLIC')?`Connected to ${mp.room}`:`Private room code: ${mp.room} — share with friends`);
       showToast(mp.room.startsWith('PUBLIC')?`Connected as ${username}`:`Your room code: ${mp.room} · share it with friends`);
       drawHud();
-    }catch(err){if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;throw err;}
+    }catch(err){
+      if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;
+      // Compatibility with an older Render server that insists the client select
+      // the private room's mode before it will send a welcome packet.
+      // The joiner must not select a mode: identify the mode from that server
+      // message, reconnect once and then show the normal Proceed/Back dialog.
+      const message=String(err&&err.message||'');
+      const legacyMode=/\b(ring\s*race|ring\s*run)\b/i.test(message)?'race':/\bfree\s*flight\b/i.test(message)?'free':null;
+      const modeMismatch=/select.*(option|mode)|choose.*(option|mode)|mode.*mismatch/i.test(message);
+      if(ui.roomKind.value==='join' && !detectedMode && legacyMode && modeMismatch){
+        text(ui.menu,'Identified '+(legacyMode==='race'?'Ring Race':'Free Flight')+' room. Connecting…');
+        return enterRoom(url,room,username,legacyMode);
+      }
+      throw err;
+    }
   }
 
   function onMessage(msg){
