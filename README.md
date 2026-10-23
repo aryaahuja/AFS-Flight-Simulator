@@ -22,3 +22,12 @@ When Join Private Room is selected, the multiplayer mode cards are hidden. Enter
 
 
 Update: Multiplayer minimap/radar fully removed; all other multiplayer functionality remains.
+
+## Ring Race reliability fix (October 2026)
+
+- Ring checkpoints now use swept movement detection so high-speed aircraft can collect rings between physics frames.
+- The browser resends its current cumulative ring count until the server acknowledges it.
+- The multiplayer server accepts cumulative progress without dropping closely spaced checkpoints.
+- An active Ring Race awards a by-forfeit victory to the last connected pilot when all other participants disconnect, and displays the result above the waiting overlay.
+
+**Deployment:** Push the full project to the same GitHub repo. Confirm Vercel deploys `public/afs-game.html` and `public/multiplayer.js`, and Render deploys `realtime-server/server.js`. Both deployments are required for this fix.

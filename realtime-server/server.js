@@ -126,7 +126,10 @@ function progressFromPlayer(room,p,m){
   if(room.mode!=='race'||room.raceState!=='running'||p.finished||p.dnf)return;
   const next=Math.floor(Number(m.ring));const total=Math.floor(Number(m.total));const now=Date.now();
   if(!Number.isFinite(next)||!Number.isFinite(total)||total<10||total>220)return;
-  if(next!==p.progress+1||now-p.lastProgress<180)return;
+  // The client reports the highest *consecutive* ring it crossed. Accept a
+  // cumulative update if several checkpoints were crossed between messages;
+  // rejecting fast consecutive packets used to permanently lose checkpoints.
+  if(next<=p.progress||next>total)return;
   if(p.total&&p.total!==total)return;
   p.progress=next;p.total=total;p.lastProgress=now;
   broadcastRoom(room);
@@ -163,7 +166,15 @@ function disconnect(ws){
   else{
     broadcast(room,{type:'pilot_left',name:player.name,aircraft:player.aircraft});
     if(room.mode==='race'&&(room.raceState==='running'||room.raceState==='countdown')){
-      if(room.players.size===1){const survivor=[...room.players.values()][0];if(!survivor.dnf){survivor.finished=true;survivor.finishedAt=survivor.finishedAt||Date.now();survivor.place=1;room.raceState='finished';if(room.raceTimer){clearTimeout(room.raceTimer);room.raceTimer=null;}send(survivor.ws,{type:'race_forfeit_win',winnerId:survivor.id});}}
+      if(room.players.size===1){
+        const survivor=[...room.players.values()][0];
+        // A crash is recoverable and must not disqualify the last pilot.
+        // If the race was active and every opponent disconnects, award the win.
+        if(!survivor.finished){survivor.finished=true;survivor.finishedAt=Date.now();survivor.place=1;}
+        room.raceState='finished';
+        if(room.raceTimer){clearTimeout(room.raceTimer);room.raceTimer=null;}
+        send(survivor.ws,{type:'race_forfeit_win',winnerId:survivor.id});
+      }
       else if([...room.players.values()].every(p=>p.finished||p.dnf))room.raceState='finished';
     }
     broadcastRoom(room);

@@ -157,7 +157,7 @@
       }
       try{localStorage.setItem('afsRealtimeUrl',url);}catch(_){ }
       mp.id=reply.id;mp.room=reply.code;copyRoomButton.hidden=mp.room.startsWith('PUBLIC');mp.hostId=reply.hostId;mp.max=reply.maxPlayers||64;mp.mode=reply.mode;mp.state=reply.raceState||'waiting';mp.roster=reply.players||[];
-      mp.raceStartAt=reply.startAt||0;mp.raceStarted=reply.raceState==='running';mp.hasFinished=false;mp.lastCheckpoint=0;mp.forfeitShown=false;mp.departures=[];
+      mp.raceStartAt=reply.startAt||0;mp.raceStarted=reply.raceState==='running';mp.hasFinished=false;mp.lastCheckpoint=0;mp.lastAcknowledgedCheckpoint=0;mp.checkpointRetryAt=0;mp.forfeitShown=false;mp.departures=[];
       const world=reply.world||{};
       if(mp.mode==='race'){
         gameMode='arcade';departureAirportId=world.departure||departureAirportId;arrivalAirportId=world.arrival||arrivalAirportId;
@@ -211,18 +211,20 @@
       const result=labels[msg.place];
       if(result&&isOnline()){
         el('mp-race-result-title').textContent=result[0];el('mp-race-result-message').textContent=result[1];
-        el('mp-race-forfeit').hidden=false;showToast(result[0]);
+        el('mp-race-forfeit').hidden=false;ui.gate.hidden=true;showToast(result[0]);
       }return;
     }
     if(msg.type==='race_forfeit_win'){
       if(msg.winnerId===mp.id&&!mp.forfeitShown){mp.forfeitShown=true;mp.state='finished';mp.hasFinished=true;paused=true;
         el('mp-race-result-title').textContent='YOU WIN! · BY FORFEIT';
         el('mp-race-result-message').textContent='All other pilots have left this Ring Race. You are the last remaining pilot and have won by forfeit.';
-        el('mp-race-forfeit').hidden=false;showToast('All opponents left — you win by forfeit!');}
+        el('mp-race-forfeit').hidden=false;ui.gate.hidden=true;showToast('All opponents left — you win by forfeit!');}
       return;
     }
     if(msg.type==='room_state'){
       mp.hostId=msg.hostId||mp.hostId;mp.state=msg.raceState||mp.state;mp.roster=msg.players||mp.roster;mp.raceStartAt=msg.startAt||mp.raceStartAt;mp.max=msg.maxPlayers||mp.max;
+      const self=mp.roster.find(p=>p.id===mp.id);
+      if(self)mp.lastAcknowledgedCheckpoint=Math.max(mp.lastAcknowledgedCheckpoint||0,self.progress||0);
       for(const p of mp.roster)if(p.id!==mp.id&&p.position)receiveRemote(p);
       const valid=new Set(mp.roster.map(p=>p.id));for(const [id] of mp.remote)if(!valid.has(id))removeRemote(id);
       drawHud();return;
@@ -232,7 +234,7 @@
       return;
     }
     if(msg.type==='race_countdown'){
-      mp.state='countdown';mp.raceStartAt=msg.startAt;mp.raceStarted=false;mp.hasFinished=false;
+      mp.state='countdown';mp.raceStartAt=msg.startAt;mp.raceStarted=false;mp.hasFinished=false;mp.lastCheckpoint=0;mp.lastAcknowledgedCheckpoint=0;
       if(plane){parkingBrake=true;state.throttleCommand=0;state.vel.set(0,0,0);state.pitchRate=state.rollRate=state.yawRate=0;}
       ringsPassed=0;rings.forEach(r=>{r.userData.passed=false;r.userData.passedAt=0;r.visible=true;});refreshRingRunVisuals();
       paused=true;ui.gate.hidden=false;drawHud();return;
@@ -312,7 +314,7 @@
       else text(ui.status,'Waiting for host to launch race');
       const waiting=(mp.state==='waiting'||mp.state==='finished');
       ui.startRace.hidden=!(waiting&&mp.id===mp.hostId&&online>=2);
-      ui.gate.hidden=!(waiting||mp.state==='countdown')||mp.raceStarted;
+      ui.gate.hidden=!(waiting||mp.state==='countdown')||mp.raceStarted||mp.forfeitShown||!el('mp-race-forfeit').hidden;
       if(waiting){text(ui.gateTitle,mp.state==='finished'?'RACE COMPLETE':'WAITING FOR PILOTS');text(ui.gateInfo,online<2?'At least two pilots are needed to race.':mp.id===mp.hostId?'Press START RACE when everyone is ready.':'The room host starts the race.');}
     }else{
       ui.scores.replaceChildren();text(ui.status,`Flying together · ${mp.room}`);ui.gate.hidden=true;
@@ -328,6 +330,12 @@
       if(remains>0){paused=true;ui.gate.hidden=false;text(ui.gateTitle,String(remains));text(ui.gateInfo,'Get ready! Hold your throttle until GO.');}
       else if(!mp.raceStarted){paused=false;mp.raceStarted=true;mp.state='running';parkingBrake=true;ui.gate.hidden=true;showToast('GO! · Release parking brake and take off');drawHud();}
     }else if(mp.mode==='race'&&!mp.raceStarted&&mp.state!=='running'&&mp.state!=='finished')paused=true;
+    // Replay the cumulative checkpoint count until the server acknowledges it.
+    // WebSocket connection hiccups and rapid ring crossings must not lose rings.
+    if(mp.mode==='race' && mp.raceStarted && mp.lastCheckpoint>(mp.lastAcknowledgedCheckpoint||0) && performance.now()>(mp.checkpointRetryAt||0)){
+      emit({type:'progress',ring:mp.lastCheckpoint,total:rings.length});
+      mp.checkpointRetryAt=performance.now()+650;
+    }
     if(mp.sendAccumulator>.125){
       mp.sendAccumulator=0;
       if(!systems.replay)emit({type:'state',position:[plane.position.x,plane.position.y,plane.position.z].map(n=>Math.round(n*10)/10),rotation:[plane.quaternion.x,plane.quaternion.y,plane.quaternion.z,plane.quaternion.w].map(n=>Math.round(n*10000)/10000),speed:Math.round(state.iasKnots||0)});
@@ -346,11 +354,11 @@
     if(mp.uiAccumulator>.5){mp.uiAccumulator=0;drawHud();}
     if(mp.lagAccumulator>4){mp.lagAccumulator=0;mp.lastPingAt=Date.now();emit({type:'ping',t:mp.lastPingAt});}
   }
-  function checkpoint(n){if(isOnline()&&mp.mode==='race'&&mp.raceStarted&&n>mp.lastCheckpoint){mp.lastCheckpoint=n;emit({type:'progress',ring:n,total:rings.length});}}
+  function checkpoint(n){if(isOnline()&&mp.mode==='race'&&n>mp.lastCheckpoint){mp.lastCheckpoint=n;if(mp.raceStarted){emit({type:'progress',ring:n,total:rings.length});mp.checkpointRetryAt=performance.now()+650;}}}
   function landed(score){if(isOnline()&&mp.mode==='race'&&mp.raceStarted&&!mp.hasFinished){mp.hasFinished=true;emit({type:'finish',score:Math.round(score),rings:ringsPassed,total:rings.length});}}
   function crashed(){/* A crash is recoverable; do not mark a racer DNF. */}
   function onRespawn(){if(isOnline())emit({type:'respawn'});}
   const mode=()=>mp.mode;const lastCheckpoint=()=>mp.lastCheckpoint;
-  function cleanup(){el('mp-room-code-line').hidden=true;el('mp-departures').replaceChildren();el('mp-race-forfeit').hidden=true;el('mp-room-confirm').hidden=true;mp.forfeitShown=false;mp.raceStarted=false;mp.hasFinished=false;mp.lastCheckpoint=0;mp.roster=[];mp.departures=[];if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;mp.id='';for(const [id] of mp.remote)removeRemote(id);ui.hud.hidden=true;ui.gate.hidden=true;}
+  function cleanup(){el('mp-room-code-line').hidden=true;el('mp-departures').replaceChildren();el('mp-race-forfeit').hidden=true;el('mp-room-confirm').hidden=true;mp.forfeitShown=false;mp.raceStarted=false;mp.hasFinished=false;mp.lastCheckpoint=0;mp.lastAcknowledgedCheckpoint=0;mp.roster=[];mp.departures=[];if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;mp.id='';for(const [id] of mp.remote)removeRemote(id);ui.hud.hidden=true;ui.gate.hidden=true;}
   window.AFSMP={frame,checkpoint,landed,crashed,cleanup,isOnline,mode,lastCheckpoint,onRespawn};
 })();

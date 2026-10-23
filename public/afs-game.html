@@ -5704,7 +5704,7 @@
     }
 
     function createRings() {
-      rings.forEach(r=>scene.remove(r)); rings.length=0; ringsPassed=0; ringRunPhase='CLIMB';
+      rings.forEach(r=>scene.remove(r)); rings.length=0; ringsPassed=0; previousRingCheckPosition=null; ringRunPhase='CLIMB';
 
       const dep=getAirport(departureAirportId), arr=getAirport(arrivalAirportId);
       const runwayY=5;
@@ -6582,7 +6582,7 @@
       $('crash').style.display='none';
       if(plane){scene.remove(plane);plane=null;}
       start();
-      if(online){window.AFSMP.onRespawn();if(inRace&&checkpoint>0&&rings[checkpoint-1]){
+      if(online){window.AFSMP.onRespawn();previousRingCheckPosition=null;if(inRace&&checkpoint>0&&rings[checkpoint-1]){
         const ref=rings[Math.min(checkpoint,rings.length-1)];
         const prev=rings[Math.max(0,checkpoint-1)];
         plane.position.copy(prev.position);plane.position.y+=25;
@@ -7587,11 +7587,25 @@
       }
     }
 
+    let previousRingCheckPosition = null;
     function updateRings() {
-      if (!(gameMode === 'arcade' || gameMode === 'training')) return;
+      if (!(gameMode === 'arcade' || gameMode === 'training' || (window.AFSMP && window.AFSMP.isOnline() && window.AFSMP.mode()==='race'))) return;
       const ring=rings[ringsPassed];
       if(!ring) return;
-      const d=plane.position.distanceTo(ring.position);
+      // Check the swept flight segment as well as the current position. A fast
+      // aircraft can pass completely through a checkpoint between physics ticks.
+      let d=plane.position.distanceTo(ring.position);
+      if(previousRingCheckPosition){
+        const segment=new THREE.Vector3().subVectors(plane.position,previousRingCheckPosition);
+        const lenSq=segment.lengthSq();
+        if(lenSq>0.0001 && lenSq<25000000){
+          const t=THREE.MathUtils.clamp(new THREE.Vector3().subVectors(ring.position,previousRingCheckPosition).dot(segment)/lenSq,0,1);
+          const closest=previousRingCheckPosition.clone().addScaledVector(segment,t);
+          d=Math.min(d,closest.distanceTo(ring.position));
+        }
+      }
+      if(!previousRingCheckPosition)previousRingCheckPosition=plane.position.clone();
+      else previousRingCheckPosition.copy(plane.position);
       if(d<138){
         ring.userData.passed=true;
         ring.userData.passedAt=performance.now()/1000;
