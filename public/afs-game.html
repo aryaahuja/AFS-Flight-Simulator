@@ -2259,7 +2259,7 @@
           <div class="mini-row"><span>Pitch / Roll</span><span class="key">Left Stick</span></div>
           <div class="mini-row"><span>Yaw</span><span class="key">Hold YAW</span></div>
           <div class="mini-row"><span>Throttle</span><span class="key">Drag THR</span></div>
-          <div class="mini-row"><span>Airbrake</span><span class="key">Hold AIR</span></div>
+          <div class="mini-row"><span>Airbrake (any throttle)</span><span class="key">Hold AIR</span></div>
           <div class="mini-row"><span>Gear</span><span class="key">GEAR</span></div>
           <div class="mini-row"><span>Flaps</span><span class="key">FLP − / +</span></div>
           <div class="mini-row"><span>Trim</span><span class="key">TRM − / +</span></div>
@@ -2330,7 +2330,7 @@
       <button class="mobile-control-btn" data-mobile-action="trimDown">TRIM−</button>
       <button class="mobile-control-btn" data-mobile-action="trimUp">TRIM+</button>
       <button id="mobileLightState" class="mobile-control-btn" data-mobile-action="lights">LIGHT</button>
-      <button class="mobile-control-btn" data-hold-input="ctrl">AIR</button>
+      <button class="mobile-control-btn" data-hold-input="airbrake">AIR</button>
       <button class="mobile-control-btn" data-hold-input="r">REV</button>
       <button class="mobile-control-btn" data-mobile-action="camera">CAM</button>
       <button class="mobile-control-btn" data-mobile-action="reset">RESET</button>
@@ -2355,7 +2355,7 @@
         <div><b>FLP − / +</b><span>Retract / extend flaps</span></div>
         <div><b>TRIM − / +</b><span>Elevator trim</span></div>
         <div><b>LIGHT</b><span>Landing lights</span></div>
-        <div><b>AIR</b><span>Hold for airbrake at idle</span></div>
+        <div><b>AIR</b><span>Hold to deploy airbrake</span></div>
         <div><b>REV</b><span>Hold for airliner reverse at idle on ground</span></div>
         <div><b>CAM</b><span>Next camera</span></div>
         <div><b>RESET</b><span>Center camera / reset orbit</span></div>
@@ -2586,7 +2586,7 @@
     let touchdownVisualOffset = 0;
     let aircraftDetailLodBand = -1;
 
-    const inputs = { w: 0, s: 0, a: 0, d: 0, q: 0, e: 0, r: 0, shift: 0, f: 0 };
+    const inputs = { w: 0, s: 0, a: 0, d: 0, q: 0, e: 0, r: 0, shift: 0, f: 0, airbrake: 0 };
     const throttleHold = { up: 0, down: 0 };
     const state = {
       vel: new THREE.Vector3(), thrust: 0, throttleCommand: 0, engineSpool: 0, airbrake: 0,
@@ -7165,11 +7165,11 @@
       throttleHold.up = inputs.shift ? throttleHold.up + dt : 0;
       throttleHold.down = inputs.f ? throttleHold.down + dt : 0;
       if (throttleHold.up > .08 && !inputs.f) state.throttleCommand = Math.min(1, state.throttleCommand + throttleRate * dt);
-      if (throttleHold.down > .08 && !inputs.shift) state.throttleCommand = Math.max(0, state.throttleCommand - throttleRate * 1.10 * dt);
+      if (throttleHold.down > .08 && !inputs.shift) state.throttleCommand = Math.max(0, state.throttleCommand - Math.max(.85, throttleRate * 1.10) * dt);
 
       // F first closes the throttle. The airbrake deploys only after the lever
       // is fully at idle and F remains held, avoiding Ctrl+W browser shortcuts.
-      const airbrakeCommand = inputs.f && state.throttleCommand <= .0005 ? 1 : 0;
+      const airbrakeCommand = inputs.airbrake || (inputs.f && state.throttleCommand <= .0005) ? 1 : 0;
       const airbrakeRate = airbrakeCommand > state.airbrake ? 5.2 : 7.0;
       state.airbrake += (airbrakeCommand - state.airbrake) * (1 - Math.exp(-airbrakeRate * dt));
       state.airbrake = clamp(state.airbrake, 0, 1);
@@ -7901,7 +7901,7 @@
       $('throttle-label').textContent = `${throttlePercent}%`;
       $('engine-value').textContent = `${enginePercent}%`;
       $('engine-needle').style.transform = `rotate(${-125 + clamp(tRatio, 0, 1) * 250}deg)`;
-      const airbrakeActive = inputs.f && state.throttleCommand <= .00001;
+      const airbrakeActive = state.airbrake > .08;
       const reverseActive = (isBoeingTransport() || isAirbusTransport()) && onGround && inputs.r && state.throttleCommand <= .00001 && state.reverse > .04;
       $('reverse-label').style.display = reverseActive ? 'block' : 'none';
       $('airbrake-label').style.display = airbrakeActive ? 'block' : 'none';
