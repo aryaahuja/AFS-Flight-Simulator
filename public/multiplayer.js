@@ -4,7 +4,7 @@
   const el = id => document.getElementById(id);
   const ui = { setup:el('multiplayer-setup'),tile:el('multiplayerModeBtn'),single:el('singleplayerModeBtn'),singleModes:el('single-player-modes'),multiModes:el('multiplayer-modes'),heading:el('flight-mode-heading'),name:el('mp-username'),mode:el('mp-mode'),roomKind:el('mp-room-kind'),roomWrap:el('mp-room-code-wrap'),roomCode:el('mp-room-code'),url:el('mp-server-url'),menu:el('mp-menu-status'),help:el('mp-setup-help'),hud:el('mp-hud'),room:el('mp-room-indicator'),count:el('mp-count'),ping:el('mp-ping'),status:el('mp-status'),scores:el('mp-scoreboard'),gate:el('mp-race-gate'),gateTitle:el('mp-gate-title'),gateInfo:el('mp-gate-info'),startRace:el('mp-race-start') };
   if (!ui.tile || !ui.single || !ui.multiModes || !el('startButton')) return;
-  const mp = {selected:false,ws:null,id:'',room:'',hostId:'',mode:'free',state:'waiting',max:64,roster:[],remote:new Map(),lagAccumulator:0,sendAccumulator:0,uiAccumulator:0,lastPingAt:0,latency:0,raceStartAt:0,raceStarted:false,lastCheckpoint:0,hasFinished:false,connecting:false,forfeitShown:false,departures:[],roomName:''};
+  const mp = {selected:false,ws:null,id:'',room:'',hostId:'',mode:'free',state:'waiting',max:64,roster:[],remote:new Map(),lagAccumulator:0,sendAccumulator:0,uiAccumulator:0,lastPingAt:0,latency:0,raceStartAt:0,raceStarted:false,lastCheckpoint:0,hasFinished:false,connecting:false,forfeitShown:false,raceHadOpponents:false,departures:[],roomName:''};
   let singleChoice=null;
   let onlineChoice=null;
   const showError = message => { ui.menu.textContent=message; ui.help.textContent=message; ui.help.style.color='#fda4af'; };
@@ -157,7 +157,7 @@
       }
       try{localStorage.setItem('afsRealtimeUrl',url);}catch(_){ }
       mp.id=reply.id;mp.room=reply.code;copyRoomButton.hidden=mp.room.startsWith('PUBLIC');mp.hostId=reply.hostId;mp.max=reply.maxPlayers||64;mp.mode=reply.mode;mp.state=reply.raceState||'waiting';mp.roster=reply.players||[];
-      mp.raceStartAt=reply.startAt||0;mp.raceStarted=reply.raceState==='running';mp.hasFinished=false;mp.lastCheckpoint=0;mp.lastAcknowledgedCheckpoint=0;mp.checkpointRetryAt=0;mp.forfeitShown=false;mp.departures=[];
+      mp.raceStartAt=reply.startAt||0;mp.raceStarted=reply.raceState==='running';mp.hasFinished=false;mp.lastCheckpoint=0;mp.lastAcknowledgedCheckpoint=0;mp.checkpointRetryAt=0;mp.forfeitShown=false;mp.raceHadOpponents=(mp.mode==='race'&&mp.roster.length>=2);mp.departures=[];
       const world=reply.world||{};
       if(mp.mode==='race'){
         gameMode='arcade';departureAirportId=world.departure||departureAirportId;arrivalAirportId=world.arrival||arrivalAirportId;
@@ -200,6 +200,15 @@
     }
   }
 
+  // Idempotent result presentation: works from the direct event OR a room snapshot.
+  function showForfeitWin(){
+    if(mp.forfeitShown || !isOnline() || mp.mode!=='race')return;
+    mp.forfeitShown=true;mp.state='finished';mp.hasFinished=true;mp.raceStarted=false;paused=true;
+    el('mp-race-result-title').textContent='YOU WIN! · BY FORFEIT';
+    el('mp-race-result-message').textContent='All other pilots have left this Ring Race. You are the last remaining pilot and have won by forfeit.';
+    el('mp-race-forfeit').hidden=false;ui.gate.hidden=true;
+    showToast('All opponents left — you win by forfeit!');
+  }
   function onMessage(msg){
     if(msg.type==='pilot_left'){
       const notice=`${safe(msg.name)} (${typeNames[msg.aircraft]||msg.aircraft||'Aircraft'}) left the server`;
@@ -215,14 +224,22 @@
       }return;
     }
     if(msg.type==='race_forfeit_win'){
-      if(msg.winnerId===mp.id&&!mp.forfeitShown){mp.forfeitShown=true;mp.state='finished';mp.hasFinished=true;paused=true;
-        el('mp-race-result-title').textContent='YOU WIN! · BY FORFEIT';
-        el('mp-race-result-message').textContent='All other pilots have left this Ring Race. You are the last remaining pilot and have won by forfeit.';
-        el('mp-race-forfeit').hidden=false;ui.gate.hidden=true;showToast('All opponents left — you win by forfeit!');}
+      if(msg.winnerId===mp.id)showForfeitWin();
       return;
     }
     if(msg.type==='room_state'){
+      const wasActive=mp.mode==='race'&&(mp.state==='running'||mp.state==='countdown'||mp.raceStarted);
+      const previousOpponents=mp.roster.some(p=>p.id!==mp.id);
       mp.hostId=msg.hostId||mp.hostId;mp.state=msg.raceState||mp.state;mp.roster=msg.players||mp.roster;mp.raceStartAt=msg.startAt||mp.raceStartAt;mp.max=msg.maxPlayers||mp.max;
+      if(mp.mode==='race' && mp.roster.length>=2)mp.raceHadOpponents=true;
+      // The server retains its forfeit winner in every room snapshot. A one-shot
+      // WebSocket message can be missed during a rapid disconnect/reconnect.
+      if(mp.mode==='race' && msg.forfeitWinnerId===mp.id)showForfeitWin();
+      // Backward compatibility with an older server: if a live race suddenly
+      // becomes a single-player finished room, the remaining pilot wins.
+      else if(mp.mode==='race'&&!mp.forfeitShown&&mp.roster.length===1&&mp.roster[0].id===mp.id&&
+              (mp.raceHadOpponents||previousOpponents)&&
+              (msg.raceState==='finished'||(wasActive&&msg.raceState==='running'&&previousOpponents)))showForfeitWin();
       const self=mp.roster.find(p=>p.id===mp.id);
       if(self)mp.lastAcknowledgedCheckpoint=Math.max(mp.lastAcknowledgedCheckpoint||0,self.progress||0);
       for(const p of mp.roster)if(p.id!==mp.id&&p.position)receiveRemote(p);
@@ -359,6 +376,6 @@
   function crashed(){/* A crash is recoverable; do not mark a racer DNF. */}
   function onRespawn(){if(isOnline())emit({type:'respawn'});}
   const mode=()=>mp.mode;const lastCheckpoint=()=>mp.lastCheckpoint;
-  function cleanup(){el('mp-room-code-line').hidden=true;el('mp-departures').replaceChildren();el('mp-race-forfeit').hidden=true;el('mp-room-confirm').hidden=true;mp.forfeitShown=false;mp.raceStarted=false;mp.hasFinished=false;mp.lastCheckpoint=0;mp.lastAcknowledgedCheckpoint=0;mp.roster=[];mp.departures=[];if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;mp.id='';for(const [id] of mp.remote)removeRemote(id);ui.hud.hidden=true;ui.gate.hidden=true;}
+  function cleanup(){el('mp-room-code-line').hidden=true;el('mp-departures').replaceChildren();el('mp-race-forfeit').hidden=true;el('mp-room-confirm').hidden=true;mp.forfeitShown=false;mp.raceHadOpponents=false;mp.raceStarted=false;mp.hasFinished=false;mp.lastCheckpoint=0;mp.lastAcknowledgedCheckpoint=0;mp.roster=[];mp.departures=[];if(mp.ws){mp.ws.onclose=null;mp.ws.close();}mp.ws=null;mp.id='';for(const [id] of mp.remote)removeRemote(id);ui.hud.hidden=true;ui.gate.hidden=true;}
   window.AFSMP={frame,checkpoint,landed,crashed,cleanup,isOnline,mode,lastCheckpoint,onRespawn};
 })();

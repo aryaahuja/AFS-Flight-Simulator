@@ -31,3 +31,9 @@ Update: Multiplayer minimap/radar fully removed; all other multiplayer functiona
 - An active Ring Race awards a by-forfeit victory to the last connected pilot when all other participants disconnect, and displays the result above the waiting overlay.
 
 **Deployment:** Push the full project to the same GitHub repo. Confirm Vercel deploys `public/afs-game.html` and `public/multiplayer.js`, and Render deploys `realtime-server/server.js`. Both deployments are required for this fix.
+
+### Ring Race forfeit notification hotfix
+- The server now includes `forfeitWinnerId` in every room-state broadcast, not just a one-time WebSocket notification.
+- The remaining pilot sees **YOU WIN! · BY FORFEIT** if all opponents leave an active race, even if the one-time event was missed.
+- The client also supports older servers with a room-state fallback. For best results deploy both `public/multiplayer.js` and `realtime-server/server.js`.
+- This only triggers for Ring Race with opponents present; it does not trigger for a solo waiting room or Free Flight.

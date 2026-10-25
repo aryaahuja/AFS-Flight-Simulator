@@ -42,7 +42,7 @@ function allocatePrivateCode(){
   }throw Error('Please retry creating your room.');
 }
 function createRoom(code,mode,request){
-  const r={code,mode,world:worldFrom(request),hostId:null,players:new Map(),raceState:'waiting',startAt:0,raceStartedAt:0,raceTimer:null,lastActive:Date.now()};
+  const r={code,mode,world:worldFrom(request),hostId:null,players:new Map(),raceState:'waiting',startAt:0,raceStartedAt:0,raceTimer:null,forfeitWinnerId:null,lastActive:Date.now()};
   rooms.set(code,r);return r;
 }
 function getPublicRoom(mode,request){
@@ -62,7 +62,7 @@ function publicPlayer(p){
 }
 function roomPlayers(room){return [...room.players.values()].map(publicPlayer);}
 function broadcast(room,obj){const body=JSON.stringify(obj);for(const p of room.players.values())wsSend(p.ws,body);}
-function broadcastRoom(room){broadcast(room,{type:'room_state',code:room.code,mode:room.mode,hostId:room.hostId,maxPlayers:MAX_PLAYERS,players:roomPlayers(room),raceState:room.raceState,startAt:room.startAt});}
+function broadcastRoom(room){broadcast(room,{type:'room_state',code:room.code,mode:room.mode,hostId:room.hostId,maxPlayers:MAX_PLAYERS,players:roomPlayers(room),raceState:room.raceState,startAt:room.startAt,forfeitWinnerId:room.forfeitWinnerId||null});}
 function safeName(request,room){
   let base=str(request.name,20).replace(/[\u007f-\u009f]/g,'');
   if(base.length<2)throw Error('Username needs at least 2 characters.');
@@ -93,7 +93,7 @@ function hello(ws,m){
   const player={ws,id:randomUUID(),name:safeName(m,room),aircraft:allowedAirframes.has(m.aircraft)?m.aircraft:'A320',livery:str(m.livery,40),premium:!!m.premium,position:null,rotation:null,speed:0,progress:0,total:0,finished:false,finishedAt:0,place:0,dnf:false,lastState:0,lastProgress:0,joinedAt:Date.now()};
   room.players.set(player.id,player);room.lastActive=Date.now();clients.set(ws,{room,player});
   if(!room.hostId)room.hostId=player.id;
-  send(ws,{type:'welcome',id:player.id,code:room.code,mode:room.mode,world:room.world,hostId:room.hostId,maxPlayers:MAX_PLAYERS,players:roomPlayers(room),raceState:room.raceState,startAt:room.startAt});
+  send(ws,{type:'welcome',id:player.id,code:room.code,mode:room.mode,world:room.world,hostId:room.hostId,maxPlayers:MAX_PLAYERS,players:roomPlayers(room),raceState:room.raceState,startAt:room.startAt,forfeitWinnerId:room.forfeitWinnerId||null});
   broadcastRoom(room);
 }
 function startRace(room,requester){
@@ -102,7 +102,7 @@ function startRace(room,requester){
   if(room.players.size<2)throw Error('At least two pilots are needed to race.');
   if(room.raceState==='running'||room.raceState==='countdown')return;
   if(room.raceTimer)clearTimeout(room.raceTimer);
-  room.raceState='countdown';room.startAt=Date.now()+6500;
+  room.raceState='countdown';room.forfeitWinnerId=null;room.startAt=Date.now()+6500;
   for(const p of room.players.values()){p.progress=0;p.total=0;p.finished=false;p.finishedAt=0;p.place=0;p.dnf=false;p.lastProgress=0;}
   broadcast(room,{type:'race_countdown',startAt:room.startAt});
   broadcastRoom(room);
@@ -171,7 +171,7 @@ function disconnect(ws){
         // A crash is recoverable and must not disqualify the last pilot.
         // If the race was active and every opponent disconnects, award the win.
         if(!survivor.finished){survivor.finished=true;survivor.finishedAt=Date.now();survivor.place=1;}
-        room.raceState='finished';
+        room.raceState='finished';room.forfeitWinnerId=survivor.id;
         if(room.raceTimer){clearTimeout(room.raceTimer);room.raceTimer=null;}
         send(survivor.ws,{type:'race_forfeit_win',winnerId:survivor.id});
       }
