@@ -2452,6 +2452,7 @@
     #afs-hangar-hold div{height:9px;border-radius:9px;background:#314056;margin:12px 0;overflow:hidden}#afs-hangar-hold i{display:block;width:0;height:100%;background:#38bdf8;border-radius:9px}#afs-hangar-hold small{font-weight:400;color:#cbd5e1}
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/js/afs-glb-loader.js"></script>
   <script>
     'use strict';
 
@@ -2651,6 +2652,54 @@
 
     function updateAdaptivePerformance() {
       // Intentionally disabled: graphics quality never scales down.
+    }
+
+    // AFS visual upgrade: original animation and physics objects stay available in memory.
+    // GLB previews are real 3D meshes, not a screenshot projected onto a plane.
+    const AFS_REFERENCE_AIRCRAFT = Object.freeze({
+      '737': 'b737_800', 'A320': 'a320neo', 'A350': 'a350_900',
+      '787': 'b787_9', 'F18': 'fa18e', 'F22': 'f22', 'B2': 'b2_spirit'
+    });
+    let afsVisualRequest = 0;
+    function upgradeAFSAircraftVisual(flightRoot, code, spec) {
+      const token = ++afsVisualRequest;
+      const slug = AFS_REFERENCE_AIRCRAFT[code];
+      if (!slug || typeof window.loadAFSGLB !== 'function') return;
+      window.loadAFSGLB('/assets/aircraft/' + slug + '.glb').then(function(model){
+        if (token !== afsVisualRequest || plane !== flightRoot || selection !== code) return;
+        const legacy = new THREE.Group();
+        legacy.name = 'LegacyAircraftPhysicsAndAnimation';
+        while (flightRoot.children.length) legacy.add(flightRoot.children[0]);
+        flightRoot.add(legacy);
+        legacy.visible = false;
+        model.name = 'AFS_Realistic_3D_Aircraft';
+        // GLB is ground-referenced; simulator plane is approximately gearH above ground.
+        model.position.y = -spec.gearH;
+        model.traverse(function(obj){
+          if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
+        });
+        flightRoot.add(model);
+        flightRoot.userData.afs3DVisual = model;
+        // Flight dynamics, cockpit controls, gear state, multiplayer transforms,
+        // and original named attachments continue to belong to flightRoot.
+      }).catch(function(error){
+        console.warn('[AFS] Aircraft upgrade unavailable, keeping original aircraft:', error);
+      });
+    }
+    function loadAFSApprovedLandscape(){
+      if (typeof window.loadAFSGLB !== 'function') return;
+      window.loadAFSGLB('/assets/scenery/startway_approved.glb').then(function(model){
+        if (!scene) return;
+        model.name = 'AFS Approved Startway Landscape';
+        // Terrain vertices were authored in the simulator's original world coordinates.
+        // Keep original physics runway and terrain height to avoid broken wheel contact.
+        model.traverse(function(obj){
+          if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}
+        });
+        scene.add(model);
+      }).catch(function(error){
+        console.warn('[AFS] Approved landscape unavailable, keeping original scenery:',error);
+      });
     }
 
     function cacheAircraftRuntime(root) {
@@ -3604,18 +3653,23 @@
       addTrees();
       buildCity();
       AIRPORTS.forEach((a,i)=>{
-        addATCTower(a.x+(i%2? -1150:1150),a.z+550,`${a.name.toUpperCase()} TOWER`,i%2?0x22c55e:0x38bdf8);
+        if (a.id !== 'startway') addATCTower(a.x+(i%2? -1150:1150),a.z+550,`${a.name.toUpperCase()} TOWER`,i%2?0x22c55e:0x38bdf8);
       });
       addHangars();
       AIRPORTS.forEach((a,i)=>{
-        addAirportInfrastructure(a.x,a.z,0,a.length);
-        addTerminalComplex(a.x,a.z,i%2? -1:1);
+        // Startway terminal, taxiways, fences and roads are in the approved GLB;
+        // avoid duplicate overlapping airport surfaces and buildings.
+        if(a.id !== 'startway'){
+          addAirportInfrastructure(a.x,a.z,0,a.length);
+          addTerminalComplex(a.x,a.z,i%2? -1:1);
+        }
         addApproachSystem(a.x,a.z-a.length/2,-1);
         addPAPI(a.x,a.z,-1,a.length,-1,`${a.name} PAPI`);
         addWindsock(a.x+(i%2?235:-235),a.z+350);
       });
       createRainSystem();
       freezeStaticWorldTransforms();
+      loadAFSApprovedLandscape();
       createAITraffic();
       applyWeather();
       bindUI();bindEngineControl();
@@ -6641,6 +6695,7 @@
       plane.updateMatrixWorld(true);
       cacheAircraftRuntime(plane);
       plane.userData.cameraFocusLocal = computeAircraftVisualCenterLocal(plane);
+      upgradeAFSAircraftVisual(plane, selection, aircraft);
       targetCamOffset.copy(aircraft.camera);
       camOffset.copy(targetCamOffset);
       cameraZoom = 1;

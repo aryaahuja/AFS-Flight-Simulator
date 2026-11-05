@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AFS Flight Simulator — Landscape 3D Review</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:#f4f9ff;background:#071622}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(145deg,#071523,#102b39)}
+header{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:14px clamp(14px,3.5vw,38px);border-bottom:1px solid #23465b;background:#081723}
+.brand{font-weight:900;font-size:21px;letter-spacing:.08em}.brand em{font-style:normal;color:#69cef9}.subtitle{font-size:11px;letter-spacing:.15em;color:#82aebf;text-transform:uppercase}
+main{max-width:1680px;margin:auto;padding:20px clamp(12px,2.5vw,32px)}h1{font-size:clamp(23px,3vw,36px);letter-spacing:-.04em;margin:2px 0 6px}p{color:#adccdc;margin:0 0 17px;font-size:14px;line-height:1.6}
+.scene{position:relative;overflow:hidden;border:1px solid #38576a;border-radius:16px;background:#98cbe5;box-shadow:0 20px 60px #0007;height:min(71vh,740px);min-height:430px}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}canvas:active{cursor:grabbing}
+.hud{position:absolute;left:16px;top:16px;pointer-events:none;background:#071a29d9;padding:12px 14px;border:1px solid #64849e6b;border-radius:10px;backdrop-filter:blur(9px)}
+.hud strong{display:block;font-size:14px}.hud small{display:block;color:#a4bed0;font-size:11px;margin-top:5px}
+.help{position:absolute;right:15px;bottom:15px;pointer-events:none;border-radius:8px;background:#071825c7;padding:9px 12px;color:#d3e6ee;font-size:11px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.bar button,.bar select{background:#142d40;border:1px solid #315b72;color:#e1f2fc;padding:10px 13px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:650}.bar button.active,.bar button:hover{background:#215e7b;border-color:#70c6ee;color:white}
+.controls{display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:9px 2px 16px;color:#bad3e0;font-size:12px}.controls label{display:flex;align-items:center;gap:10px}.controls input{accent-color:#5fc1ef;width:130px}
+.info{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:10px 0 12px}.info>section{padding:17px;background:#102536;border:1px solid #29485a;border-radius:12px}.info b{font-size:14px}.info p{font-size:12px;margin:7px 0 0}
+.notice{background:#0d2536;border:1px solid #325c76;border-radius:10px;padding:14px 17px;margin:18px 0;font-size:13px;color:#c8dfec;line-height:1.6}.notice strong{color:#fff}
+#issue{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;background:#0c1c2bed;padding:30px;color:#fff;z-index:3}
+@media(max-width:760px){header .subtitle{display:none}main{padding:12px}.scene{height:58vh;min-height:390px}.info{grid-template-columns:1fr}.help{left:12px;right:auto;bottom:12px}.hud{left:9px;top:9px;padding:8px}.bar button{padding:9px 10px}}
+</style></head>
+<body><header><div class="brand"><em>AFS</em> ✈ FLIGHT SIMULATOR</div><div class="subtitle">LANDSCAPE STUDY · 3D SCENERY PREVIEW · NO GAME CHANGES</div></header>
+<main><div class="subtitle">Scenery redesign / Stage 1</div><h1>Startway International — realistic landscape preview</h1>
+<p>Inspect the runway, airport grounds, taxiways, hangars, terminal, roads, tree belts and surrounding hills. This is a separate 3D scenery proposal; your seven aircraft files remain unchanged.</p>
+<div class="scene"><canvas id="render"></canvas><div class="hud"><strong id="viewName">Airport overview</strong><small>3D TERRAIN + RUNWAY • UNAPPROVED</small></div><div class="help">DRAG — rotate &nbsp;·&nbsp; SCROLL/PINCH — zoom</div><div id="issue">Unable to start WebGL. Try Chrome, Edge, Firefox or Safari with hardware acceleration enabled.</div></div>
+<div class="bar" id="views"><button data-view="overview" class="active">Airport overview</button><button data-view="approach">Runway approach</button><button data-view="terminal">Terminal & apron</button><button data-view="tower">Control tower</button><button data-view="terrain">Terrain & roads</button><button data-view="top">Top-down plan</button></div>
+<div class="controls"><label>Time of day <input id="sun" type="range" min="0" max="100" value="60" step="1"><span id="timeLabel">Daylight</span></label><label>Cloud coverage <input id="cloud" type="range" min="0" max="100" value="38"><span id="cloudLabel">38%</span></label><span id="perf">Preparing scenery…</span></div>
+<div class="info"><section><b>Seamless runway edge</b><p>Terrain is blended down to airport elevation, with a recessed shoulder and continuous runway pavement to avoid the previous broken-ground effect.</p></section><section><b>Airport infrastructure</b><p>Parallel taxiway, runway markings, apron stands, terminal glass, hangars, control tower, roads and airfield lighting.</p></section><section><b>Performance-focused terrain</b><p>Batched static geometry, distance haze and a fixed, manually controlled camera. No automatic zoom, maps or AI traffic.</p></section></div>
+<div class="notice"><strong>Approval stage only.</strong> This is an original procedural scenery concept, not a satellite-perfect replica of an airport. None of the aircraft from your ZIP have been modified or integrated yet. Approve the scenery design or request revisions before I connect it with the simulator.</div>
+</main>
+<script>
+(()=>{'use strict';
+const canvas=document.querySelector('#render');const gl=canvas.getContext('webgl',{antialias:true,alpha:false,powerPreference:'high-performance'});
+if(!gl){document.querySelector('#issue').style.display='flex';return;}
+const VS=`attribute vec3 aP;attribute vec3 aN;attribute vec3 aC;attribute float aM;
+uniform mat4 uProjection;uniform mat4 uView;varying vec3 vPosition;varying vec3 vNormal;varying vec3 vColor;varying float vMetal;
+void main(){vPosition=aP;vNormal=aN;vColor=aC;vMetal=aM;gl_Position=uProjection*uView*vec4(aP,1.);}`;
+const FS=`precision highp float;varying vec3 vPosition;varying vec3 vNormal;varying vec3 vColor;varying float vMetal;
+uniform vec3 uEye;uniform vec3 uSun;uniform float uEvening;uniform float uCloud;
+vec3 tonemap(vec3 x){return pow(x/(1.+x),vec3(.75));}
+void main(){vec3 N=normalize(vNormal);vec3 L=normalize(uSun);vec3 V=normalize(uEye-vPosition);
+float nd=max(dot(N,L),0.);float ambient=.53+.12*max(N.y,0.);float diffuse=.63*nd;
+vec3 h=normalize(L+V);float spec=pow(max(dot(h,N),0.),mix(8.,75.,vMetal))*(.10+.53*vMetal)*nd;
+vec3 albedo=vColor*(ambient+diffuse);vec3 c=albedo+vec3(1.,.96,.82)*spec;
+vec3 sky=mix(vec3(.53,.69,.82),vec3(.88,.77,.62),uEvening*.73);
+float fog=1.-exp(-pow(length(uEye-vPosition)/3300.,1.5));c=mix(c,sky,clamp(fog*.84,0.,.87));
+c=mix(c,vec3(c.r*1.11,c.g*.91,c.b*.76),uEvening*.54);
+gl_FragColor=vec4(tonemap(c*1.05),1.);}`;
+const SKVS=`attribute vec2 aPos;varying vec2 vUV;void main(){vUV=(aPos+1.)*.5;gl_Position=vec4(aPos,1.,1.);}`;
+const SKFS=`precision highp float;varying vec2 vUV;uniform float uEvening;uniform float uCloud;uniform vec2 uSunScreen;
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}
+float fbm(vec2 p){return .54*noise(p)+.28*noise(p*2.07)+.12*noise(p*4.1)+.06*noise(p*8.2);}
+void main(){float y=vUV.y;vec3 top=mix(vec3(.29,.60,.84),vec3(.21,.33,.55),uEvening);vec3 horizon=mix(vec3(.83,.91,.96),vec3(.97,.60,.39),uEvening);
+vec3 sky=mix(horizon,top,pow(clamp(y,0.,1.),.8));float sun=exp(-length((vUV-uSunScreen)*vec2(1.5,1.))*21.);sky+=vec3(.93,.77,.46)*sun*.22;
+float n=fbm(vec2(vUV.x*4.2,vUV.y*7.8)+vec2(4.5,0.));float cloud=smoothstep(.57-uCloud*.2,.74-uCloud*.20,n+.08*sin(vUV.x*13.));cloud*=smoothstep(.25,.42,y)*(1.-smoothstep(.88,1.,y));
+vec3 clouds=mix(vec3(.69,.76,.82),vec3(1.,.99,.96),clamp(y*.9+.12,0.,1.));clouds=mix(clouds,vec3(.97,.75,.64),uEvening*.50);sky=mix(sky,clouds,cloud*.89);
+gl_FragColor=vec4(sky,1.);}`;
+function shader(kind,code){let s=gl.createShader(kind);gl.shaderSource(s,code);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
+function program(v,f){let p=gl.createProgram();gl.attachShader(p,shader(gl.VERTEX_SHADER,v));gl.attachShader(p,shader(gl.FRAGMENT_SHADER,f));gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(p));return p;}
+let prog,skyProg;try{prog=program(VS,FS);skyProg=program(SKVS,SKFS);}catch(e){document.querySelector('#issue').style.display='flex';document.querySelector('#issue').textContent='WebGL shader error: '+e.message;return;}
+const P={p:gl.getAttribLocation(prog,'aP'),n:gl.getAttribLocation(prog,'aN'),c:gl.getAttribLocation(prog,'aC'),m:gl.getAttribLocation(prog,'aM'),projection:gl.getUniformLocation(prog,'uProjection'),view:gl.getUniformLocation(prog,'uView'),eye:gl.getUniformLocation(prog,'uEye'),sun:gl.getUniformLocation(prog,'uSun'),evening:gl.getUniformLocation(prog,'uEvening'),cloud:gl.getUniformLocation(prog,'uCloud')};
+const SP={a:gl.getAttribLocation(skyProg,'aPos'),evening:gl.getUniformLocation(skyProg,'uEvening'),cloud:gl.getUniformLocation(skyProg,'uCloud'),sun:gl.getUniformLocation(skyProg,'uSunScreen')};
+let verts=[],count=0;const seeded=(x,z)=>{let v=Math.sin(x*127.1+z*311.7)*43758.5453;return v-Math.floor(v);};
+function color(c){if(Array.isArray(c))return c;let h=parseInt(c.replace('#',''),16);return[(h>>16&255)/255,(h>>8&255)/255,(h&255)/255];}
+function triangle(a,b,c,col,metal=0){let u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];let n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];let sz=Math.hypot(...n)||1;n=n.map(i=>i/sz);let cc=color(col);for(const p of [a,b,c])verts.push(...p,...n,...cc,metal);count+=3;}
+function quad(a,b,c,d,col,metal=0){triangle(a,b,c,col,metal);triangle(a,c,d,col,metal);}
+function flat(x1,z1,x2,z2,y,col,m=0){quad([x1,y,z1],[x1,y,z2],[x2,y,z2],[x2,y,z1],col,m);}
+function box(x,y,z,w,h,d,c,m=0){let x0=x-w/2,x1=x+w/2,y0=y,y1=y+h,z0=z-d/2,z1=z+d/2;
+quad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],c,m);quad([x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0],c,m);
+quad([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0],c,m);quad([x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1],c,m);
+quad([x0,y1,z0],[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],c,m);}
+function cylinder(x,y,z,r,h,cl,seg=8,axis='y'){let c=color(cl),dark=c.map(v=>v*.65),bright=c.map(v=>Math.min(1,v*1.1));for(let i=0;i<seg;i++){let a=i*2*Math.PI/seg,b=(i+1)*2*Math.PI/seg;let p=([u,v])=>axis==='y'?[x+u,y,z+v]:[x+u,y+v,z];let pa=p([r*Math.cos(a),r*Math.sin(a)]),pb=p([r*Math.cos(b),r*Math.sin(b)]);let pa2=axis==='y'?[pa[0],y+h,pa[2]]:[pa[0],pa[1],z+h];let pb2=axis==='y'?[pb[0],y+h,pb[2]]:[pb[0],pb[1],z+h];quad(pa,pb,pb2,pa2,c);if(axis==='y')triangle([x,y+h,z],pa2,pb2,bright);}}
+function cone(x,y,z,r,h,cl,seg=7){let c=color(cl),top=[x,y+h,z];for(let i=0;i<seg;i++){let a=i*2*Math.PI/seg,b=(i+1)*2*Math.PI/seg;triangle([x+Math.cos(a)*r,y,z+Math.sin(a)*r],[x+Math.cos(b)*r,y,z+Math.sin(b)*r],top,c);}}
+function sphere(x,y,z,r,c,ring=5,seg=8){for(let i=0;i<ring;i++){let phi0=i*Math.PI/ring,phi1=(i+1)*Math.PI/ring;for(let j=0;j<seg;j++){let theta0=j*2*Math.PI/seg,theta1=(j+1)*2*Math.PI/seg;const f=(phi,t)=>[x+r*Math.sin(phi)*Math.cos(t),y+r*Math.cos(phi),z+r*Math.sin(phi)*Math.sin(t)];quad(f(phi0,theta0),f(phi1,theta0),f(phi1,theta1),f(phi0,theta1),c);}}}
+function thickLine(x1,y1,z1,x2,y2,z2,width,cl){let dx=x2-x1,dz=z2-z1,ll=Math.hypot(dx,dz)||1,px=-dz/ll*width/2,pz=dx/ll*width/2;
+quad([x1+px,y1,z1+pz],[x2+px,y2,z2+pz],[x2-px,y2,z2-pz],[x1-px,y1,z1-pz],cl);}
+function elevations(x,z){let dist=Math.max(0,Math.abs(x)-900)*.00062+Math.max(0,Math.abs(z)-1370)*.00032;let low=Math.sin(x*.003)*Math.cos(z*.0035)*16+Math.sin(x*.008+z*.001)*7+Math.cos(z*.006)*5;let far=Math.sin(x*.0018+z*.001)*50+Math.cos(z*.0016)*38;return Math.max(-.38,dist*(12+low+far)+dist*dist*11-.18);}
+function buildTerrain(){let N=160,R=2800,sp=R*2/N;for(let i=0;i<N;i++)for(let j=0;j<N;j++){let x0=-R+i*sp,x1=x0+sp,z0=-R+j*sp,z1=z0+sp;let v=seeded(i*.81,j*1.67);let type=v>.72?'#677c51':v>.38?'#688653':v>.17?'#76935a':'#82945a';
+if(Math.abs(x0)<900&&Math.abs(z0)<1400)type=v>.65?'#62834f':v>.28?'#719457':'#819d61';
+quad([x0,elevations(x0,z0),z0],[x0,elevations(x0,z1),z1],[x1,elevations(x1,z1),z1],[x1,elevations(x1,z0),z0],type);
+}}
+function runway(){flat(-46,-1190,46,1190,.025,'#74797b');flat(-34,-1180,34,1180,.095,'#42484e',.08);flat(-29,-1180,29,1180,.12,'#3e4449',.10);
+for(let side of [-1,1]){flat(side>0?30:-32,-1150,side>0?32:-30,1150,.14,'#e6e3d6');flat(side>0?34:-46,-1190,side>0?46:-34,1190,.035,'#909183');}
+for(let z=-1020;z<1020;z+=72)flat(-.72,z,-.72+1.44,z+35,.155,'#e9e8de');
+for(let z of [-1088,1088]){for(let i=-1;i<=1;i+=2){for(let k=0;k<6;k++){let cx=i*(6.2+3.6*k);flat(cx-1.3,z-28,cx+1.3,z+28,.17,'#e6e8e4');}}}
+for(let z of [-930,-825,-720,720,825,930])for(let a of [-1,1])flat(a*13-2,z-11,a*13+2,z+11,.165,'#f7f5ee');
+// runway threshold arrows, numbers represented as authentic clean ground vector strokes
+for(let dir of [-1,1]){let z=dir*1025;for(let x=-23;x<=23;x+=7.8)flat(x-1.1,z-22,x+1.1,z+18,.17,'#efefed');}
+// painted number '18' on south, '36' on north, legible from above
+function digit(n,x,z,sc=1){let t=1.9*sc,h=19*sc,w=11*sc;let pos={top:[x-w/2,z-h/2,x+w/2,z-h/2+t],mid:[x-w/2,z-t/2,x+w/2,z+t/2],bottom:[x-w/2,z+h/2-t,x+w/2,z+h/2],lefttop:[x-w/2,z-h/2,x-w/2+t,z],righttop:[x+w/2-t,z-h/2,x+w/2,z],leftbot:[x-w/2,z,x-w/2+t,z+h/2],rightbot:[x+w/2-t,z,x+w/2,z+h/2]};let d={1:['righttop','rightbot'],3:['top','mid','bottom','righttop','rightbot'],6:['top','mid','bottom','lefttop','leftbot','rightbot'],8:['top','mid','bottom','lefttop','righttop','leftbot','rightbot']};for(let s of d[n]){let a=pos[s];flat(a[0],a[1],a[2],a[3],.183,'#e3e6df');}}
+digit(1,-9,-954);digit(8,9,-954);digit(3,-9,955);digit(6,9,955);
+// runway touchdown lights and shoulder edge markers
+for(let z=-1170;z<1170;z+=45){for(let x of [-35.5,35.5]){box(x,.05,z,1.7,.48,1.7,'#b6c8d4',.45);box(x,.52,z,.55,.18,.55,'#94ccef',.7);}}
+for(let end of [-1,1])for(let q=1;q<=13;q++){let z=end*(1210+q*21);for(let dx of [-14,0,14])box(dx,.02,z,1,.5,1, q>9?'#e8c2b7':'#fff5d4',.7);}
+}
+function taxi(){// full length parallel taxiway with two round-end connectors and holding apron
+flat(111,-1170,145,1160,.105,'#747c7c');flat(115,-1168,141,1158,.16,'#666e74',.10);
+for(let z=-1170;z<=1160;z+=27)flat(127.25,z,128.75,z+14,.174,'#f0c949');
+for(let z of [-835,-235,390,930]){
+ flat(30,z-14,130,z+14,.17,'#747c7d');flat(31,z-11.5,129,z+11.5,.205,'#656e73');thickLine(32,.23,z,132,.23,z,1.55,'#edcf58');
+ flat(44,z-21,46,z+21,.24,'#e5c849');flat(50,z-21,52,z+21,.24,'#e5c849');
+}
+for(let z of [-980,-420,230,720]){flat(140,z-18,285,z+18,.15,'#737c82');flat(140,z-16,286,z+16,.20,'#696f74');thickLine(140,.23,z,285,.23,z,1.6,'#f9cf5c');}
+// apron, 700m long, marked concrete with stands and taxi guides
+flat(270,-670,702,665,.105,'#7a7e7e');flat(283,-659,693,654,.20,'#888f90');for(let x=283;x<695;x+=38)thickLine(x,.211,-659,x,.211,654,.4,'#9ca5a2');for(let z=-659;z<654;z+=39)thickLine(285,.211,z,693,.211,z,.34,'#9ca5a2');
+for(let z=-558;z<=558;z+=145){thickLine(345,.227,z,655,.227,z,1.4,'#f4d263');flat(510,z-33,512,z+33,.24,'#c7e5e9');for(let x of [422,560]){thickLine(x,.25,z-27,x,.25,z+27,0.7,'#f2d16e');}}
+}
+function building(x,z,w,h,d,tone='terminal'){let wall=tone==='hangar'?'#d6dadd':tone==='office'?'#b8c7d1':'#dbe5e9';box(x,.22,z,w,h,d,wall,.3);box(x,.22+h,z,w+3,1.2,d+3,'#445d69',.25);if(tone==='terminal'||tone==='office'){for(let side of [-1,1]){let zFace=z+side*d/2+.6;box(x,.22+h*.14,zFace,w-8,h*.62,.65,'#33667e',.8);for(let gx=x-w/2+12;gx<x+w/2-3;gx+=16)box(gx,.22+h*.14,zFace+side*.5,1.7,h*.62,.35,'#a1c9d7',.75);}}
+if(tone==='hangar'){for(let a=0;a<4;a++)box(x-w/2+(a+.5)*w/4,.22,z+d/2+.65,w/4-2,h*.76,.9,'#526979',.36);}}
+function terminal(){// apron terminal spine, several jet bridges, light poles
+building(762,0,92,29,1050);building(821,-385,105,28,210,'office');building(821,398,105,28,220,'office');
+for(let z=-553;z<=553;z+=145){box(688,10,z,144,12,13,'#c7d6df',.28);box(625,4,z,11,11,18,'#617d8d',.5);
+for(let x of [594,643,688])cylinder(x,.25,z,1.3,10,'#abbac1',7);box(704,12,z+8,55,3.4,2,'#beceda');}
+// ground-level glass and roof solar panels
+for(let z=-499;z<520;z+=35){box(761,30,z,58,.2,17,'#40677b',.7);}
+// apron floodlights
+for(let z=-622;z<=622;z+=225){cylinder(270,.2,z,2,34,'#a1afaf');box(270,34,z,12,2.2,3,'#e7e3cd',.6);}
+// hangars, warehouses and airport support structures
+for(let z of [-1090,-860,-630,810,1050]){building(800,z,215,39,170,'hangar');}
+building(1080,-410,145,19,188,'office');building(1080,130,140,20,220,'office');building(1050,520,175,21,185,'hangar');
+// control tower and radar dome
+cylinder(955,0,-100,11,95,'#a8b8c2',12);cylinder(955,94,-100,19,4,'#e2e9ea',12);cylinder(955,98,-100,19,13,'#37617a',12);cylinder(955,111,-100,22,3,'#d3d8db',12);cone(955,114,-100,19,9,'#526978',12);cylinder(955,123,-100,1.2,13,'#b6c8d2');
+// windsock near stand
+cylinder(200,.2,-1080,.9,22,'#c1bfb5');cone(201,18,-1080,6,8,'#df693e',8);
+}
+function road(){// roads around airport with lane markings and vehicles
+for(let x of [1120,1395]){flat(x-23,-2100,x+23,2100,.17,'#51585c');thickLine(x,.195,-2000,x,.195,2000,1.4,'#cfb76b');for(let z=-2000;z<2000;z+=55){flat(x-12,z,x-11,z+27,.202,'#b5c0c1');flat(x+11,z,x+12,z+27,.202,'#b5c0c1');}}
+for(let z of [-1550,1365]){flat(950,z-22,2100,z+22,.18,'#555d62');for(let x=950;x<2100;x+=55)flat(x,z-.7,x+27,z+.7,.2,'#ccbb86');}
+// parking surface and rows
+flat(900,-900,1110,-590,.16,'#6c7479');for(let z=-870;z<-600;z+=19){for(let x=932;x<1090;x+=30){box(x,.17,z,8,2.8,16,seeded(x,z)>.45?'#c2d7d9':'#a1b8be',.8);box(x,3,z,7,1.4,10,'#2b4e65',.6);}}
+// suburbs: apartment offices and homes in band beyond the highway
+for(let i=0;i<60;i++){let x=1570+(i%6)*80+seeded(i,2)*13,z=-1800+Math.floor(i/6)*370+seeded(i,3)*35;if(Math.abs(z)<190)continue;let h=12+seeded(i,24)*38;box(x,elevations(x,z),z,36+seeded(i,12)*20,h,44,seeded(i,5)>.6?'#b9c5cb':'#b2afa8',.15);box(x,elevations(x,z)+h,z,36,1.5,46,'#737f86');}
+// electric lines & few freight vehicles
+for(let z=-1550;z<=1600;z+=220){cylinder(1183,.15,z,1.2,20,'#9da8ac');box(1183,20,z,11,1.5,2,'#bcc7c8');}
+for(let i=0;i<18;i++){let x=i%2?1110:1404,z=-1730+i*204;box(x,.22,z,7,3.6,14,i%3===0?'#e6e7dc':i%3===1?'#5b8297':'#b8b5aa',.7);box(x,3.7,z-1,6.1,1.4,5.4,'#2c4b55',.6);}
+}
+function airportFence(){// fence posts and horizontal rails sit OUTSIDE the pavement
+for(let z=-1390;z<=1390;z+=28){for(let x of [-320,1055]){let y=elevations(x,z);cylinder(x,y,z,.6,3,'#a3ae9e',5);}}for(let x=-320;x<=1055;x+=28){for(let z of [-1390,1390]){let y=elevations(x,z);cylinder(x,y,z,.6,3,'#a3ae9e',5);}}
+for(let x of [-320,1055])for(let y of [1.1,2.6])thickLine(x,y,-1390,x,y,1390,.3,'#95a59d');}
+function tree(x,z,scale=1){let y=elevations(x,z);cylinder(x,y,z,.6*scale,7*scale,'#594c39',6);let palette=['#2a5c3b','#3f7049','#4b7c46','#577f4a','#63834d'];let cl=palette[Math.floor(seeded(x*.11,z*.09)*palette.length)];cone(x,y+4*scale,z,4*scale,9*scale,cl,6);cone(x,y+8*scale,z,3.1*scale,7*scale,cl,6);}
+function vegetation(){for(let i=0;i<640;i++){let x=(seeded(i,100)*2-1)*2600,z=(seeded(i,201)*2-1)*2550;
+if(x>-450&&x<1480&&z>-1480&&z<1510)continue;if(x>1490&&x<2040&&Math.abs(z)<1900)continue;if(Math.abs(x-1395)<35||Math.abs(x-1120)<35)continue;
+let scale=.95+seeded(i,2)*1.7;tree(x,z,scale);}
+// broad greenbelt to west of runway, open enough for safe approach
+for(let i=0;i<125;i++){let x=-480-seeded(i,8)*1000,z=-1450+seeded(i,7)*2900;tree(x,z,.9+seeded(i,1)*1.0);}
+// fence-side shrubs and vegetation
+for(let i=0;i<150;i++){let z=-1340+i*18.5;let x=-275-(seeded(i,333)-.5)*35;if(i%4===0)tree(x,z,.8);}
+}
+function detail(){// low taxiway signs, beacons, service road, lights
+for(let z of [-770,-180,475,1000]){box(165,.2,z+25,14,3,1.5,'#f3cf4c');box(165,3.2,z+25,15,.5,1.6,'#161c20');}
+for(let z=-1110;z<1110;z+=65){box(-58,.2,z,1.1,1.4,1.1,'#dde9e9',.4);box(59,.2,z,1.1,1.4,1.1,'#dde9e9',.4);}
+for(let z=-1300;z<=1300;z+=75){box(255,.1,z,3,9,3,'#c7c4b7',.2);box(255,9.1,z,5,1.1,3,'#e6ecdf',.6);}
+for(let i=0;i<45;i++){let z=-1380+i*63;let x=175+seeded(i,8)*50;box(x,.08,z,3,.5,3,'#718e6d');}
+}
+const start=performance.now();try{buildTerrain();road();runway();taxi();terminal();airportFence();vegetation();detail();}catch(e){document.querySelector('#issue').style.display='flex';document.querySelector('#issue').textContent='Scenery build error: '+e.message;console.error(e);return;}
+let data=new Float32Array(verts);verts=null;const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);let vertCount=count;data=null;const skyBuf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,skyBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+document.querySelector('#perf').textContent=(vertCount/3).toLocaleString()+' triangles · static scenery';
+function norm(v){let l=Math.hypot(...v)||1;return v.map(x=>x/l);}
+function cross(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function dot(a,b){return a.reduce((v,x,i)=>v+x*b[i],0);}
+function subtract(a,b){return a.map((v,i)=>v-b[i]);}
+function lookAt(eye,target){let z=norm(subtract(eye,target)),x=norm(cross([0,1,0],z)),y=cross(z,x);return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]);}
+function perspective(fov,aspect,near,far){let f=1/Math.tan(fov/2),nf=1/(near-far);return new Float32Array([f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,2*far*near*nf,0]);}
+let target=[100,0,0],dist=1650,yaw=.87,pitch=.42,evening=.1,cloud=.38;const cameraViews={
+ overview:{title:'Airport overview',t:[180,0,0],d:1680,yaw:.92,pitch:.53},
+ approach:{title:'Runway approach',t:[0,4,-490],d:1130,yaw:.12,pitch:.17},
+ terminal:{title:'Terminal & apron',t:[500,3,0],d:720,yaw:1.16,pitch:.41},
+ tower:{title:'Control tower',t:[790,23,-100],d:410,yaw:1.0,pitch:.35},
+ terrain:{title:'Terrain & roads',t:[1270,5,250],d:1750,yaw:.68,pitch:.42},
+ top:{title:'Top-down plan',t:[230,0,0],d:2030,yaw:.002,pitch:Math.PI/2-.013}};
+function setView(n){let v=cameraViews[n];target=[...v.t];dist=v.d;yaw=v.yaw;pitch=v.pitch;document.querySelector('#viewName').textContent=v.title;document.querySelectorAll('#views button').forEach(el=>el.classList.toggle('active',el.dataset.view===n));}
+document.querySelectorAll('#views button').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));setView('overview');
+const setSun=()=>{let v=+document.querySelector('#sun').value;evening=v<35?(35-v)/35:v>82?(v-82)/18*.3:0;document.querySelector('#timeLabel').textContent=v<35?'Golden hour':'Daylight'};
+const setCloud=()=>{cloud=+document.querySelector('#cloud').value/100;document.querySelector('#cloudLabel').textContent=Math.round(cloud*100)+'%'};
+document.querySelector('#sun').addEventListener('input',setSun);document.querySelector('#cloud').addEventListener('input',setCloud);setSun();setCloud();
+let pointers=new Map(),lastPinch=0;canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);lastPinch=0;});
+canvas.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;const prev=pointers.get(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);const a=[...pointers.values()];if(a.length>=2){let d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);if(lastPinch)dist=Math.max(65,Math.min(4700,dist*lastPinch/d));lastPinch=d;}else{yaw+=(e.clientX-prev[0])*.006;pitch=Math.max(-.05,Math.min(Math.PI/2-.012,pitch+(e.clientY-prev[1])*.005));}});
+for(let name of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(name,e=>{pointers.delete(e.pointerId);lastPinch=0;});
+canvas.addEventListener('wheel',e=>{e.preventDefault();dist=Math.max(65,Math.min(4700,dist*Math.exp(e.deltaY*.0009)));},{passive:false});
+function render(){let dpr=Math.min(devicePixelRatio||1,1.5),w=Math.max(1,Math.round(canvas.clientWidth*dpr)),h=Math.max(1,Math.round(canvas.clientHeight*dpr));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}gl.viewport(0,0,w,h);
+gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.useProgram(skyProg);gl.bindBuffer(gl.ARRAY_BUFFER,skyBuf);gl.enableVertexAttribArray(SP.a);gl.vertexAttribPointer(SP.a,2,gl.FLOAT,false,0,0);gl.uniform1f(SP.evening,evening);gl.uniform1f(SP.cloud,cloud);gl.uniform2f(SP.sun,.72,.6-evening*.2);gl.drawArrays(gl.TRIANGLES,0,3);
+gl.enable(gl.DEPTH_TEST);gl.depthMask(true);gl.clear(gl.DEPTH_BUFFER_BIT);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.useProgram(prog);let ey=[target[0]+dist*Math.sin(yaw)*Math.cos(pitch),target[1]+dist*Math.sin(pitch),target[2]+dist*Math.cos(yaw)*Math.cos(pitch)];
+gl.uniformMatrix4fv(P.projection,false,perspective(Math.PI/3,w/h,1,13000));gl.uniformMatrix4fv(P.view,false,lookAt(ey,target));gl.uniform3fv(P.eye,ey);gl.uniform3fv(P.sun,norm([-0.55,.91,.25]));gl.uniform1f(P.evening,evening);gl.uniform1f(P.cloud,cloud);
+gl.bindBuffer(gl.ARRAY_BUFFER,b);const s=40;for(let item of [[P.p,3,0],[P.n,3,12],[P.c,3,24],[P.m,1,36]]){gl.enableVertexAttribArray(item[0]);gl.vertexAttribPointer(item[0],item[1],gl.FLOAT,false,s,item[2]);}gl.drawArrays(gl.TRIANGLES,0,vertCount);gl.disable(gl.CULL_FACE);requestAnimationFrame(render);}
+requestAnimationFrame(render);
+})();
+</script></body></html>
