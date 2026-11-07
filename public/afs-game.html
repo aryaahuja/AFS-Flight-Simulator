@@ -2488,6 +2488,9 @@
     let perfSampleStart = performance.now();
     let perfGoodSamples = 0;
     let lastShadowUpdateMs = 0;
+    const previousShadowFocus = new THREE.Vector3(Infinity,Infinity,Infinity);
+    const previousShadowRotation = new THREE.Quaternion();
+    let lastShadowSunDirection = null;
     let lastHudUpdateMs = 0;
     let lastAudioUpdateMs = 0;
     let lastPapiUpdateSec = -1;
@@ -3413,8 +3416,31 @@
 
 
     function addTerminalComplex(x,z,side=1){const g=new THREE.Group();g.position.set(x+side*520,0,z+120);const concrete=sharedMaterial('terminal-concrete',()=>new THREE.MeshStandardMaterial({color:0x9aa4aa,roughness:.68,metalness:.1}));const glass=sharedMaterial('terminal-glass',()=>new THREE.MeshPhysicalMaterial({color:0x406879,transparent:true,opacity:.72,roughness:.18,metalness:.18}));const apron=sharedMaterial('terminal-apron',()=>new THREE.MeshStandardMaterial({color:0x687177,roughness:.92}));const ap=new THREE.Mesh(new THREE.PlaneGeometry(760,900),apron);ap.rotateX(-Math.PI/2);ap.position.y=5.04;g.add(ap);const main=new THREE.Mesh(new THREE.BoxGeometry(380,48,115),concrete);main.position.set(side*30,29,0);g.add(main);const win=new THREE.Mesh(new THREE.BoxGeometry(386,17,4),glass);win.position.set(side*30,34,-58*side);g.add(win);for(let i=-3;i<=3;i++){const gz=i*105,pier=new THREE.Mesh(new THREE.BoxGeometry(34,24,82),concrete);pier.position.set(-side*185,20,gz);g.add(pier);const bridge=new THREE.Mesh(new THREE.BoxGeometry(95,9,13),glass);bridge.position.set(-side*245,21,gz);g.add(bridge);}scene.add(g);}
-    function createRainSystem(){const n=1200,g=new THREE.BufferGeometry(),a=new Float32Array(n*3);for(let i=0;i<n;i++){a[i*3]=(Math.random()-.5)*180;a[i*3+1]=Math.random()*120;a[i*3+2]=(Math.random()-.5)*180;}g.setAttribute('position',new THREE.BufferAttribute(a,3));rainSystem=new THREE.Points(g,new THREE.PointsMaterial({color:0xb9d8e8,size:.65,transparent:true,opacity:.58,depthWrite:false}));rainSystem.visible=false;scene.add(rainSystem);}
-    function updateRain(dt){if(!rainSystem||!plane)return;const raining=rainEnabled&&cloudDensity>=RAIN_CLOUD_MIN;rainSystem.visible=raining;const lens=$('rain-lens');if(lens)lens.classList.toggle('active',raining&&active);const runwayMat=sharedMaterialCache.get('runway-asphalt');if(runwayMat){runwayMat.roughness=raining?.40:.96;runwayMat.metalness=raining?.10:.015;runwayMat.needsUpdate=true;}if(!raining)return;rainSystem.position.copy(plane.position);const a=rainSystem.geometry.attributes.position.array;for(let i=0;i<a.length;i+=3){a[i+1]-=92*dt;a[i]-=wind.x*1.05*dt;a[i+2]-=wind.z*.35*dt;if(a[i+1]<-8){a[i+1]=125;a[i]=(Math.random()-.5)*180;a[i+2]=(Math.random()-.5)*180;}}rainSystem.geometry.attributes.position.needsUpdate=true;}
+    function createRainSystem(){const n=1200,g=new THREE.BufferGeometry(),a=new Float32Array(n*3);for(let i=0;i<n;i++){a[i*3]=(Math.random()-.5)*180;a[i*3+1]=Math.random()*120;a[i*3+2]=(Math.random()-.5)*180;}g.setAttribute('position',new THREE.BufferAttribute(a,3).setUsage(THREE.DynamicDrawUsage));rainSystem=new THREE.Points(g,new THREE.PointsMaterial({color:0xb9d8e8,size:.65,transparent:true,opacity:.58,depthWrite:false}));rainSystem.visible=false;scene.add(rainSystem);}
+    let lastRainSurfaceState = null;
+    let lastRainLensState = null;
+    function updateRain(dt){
+      if(!rainSystem)return;
+      const raining=!!plane&&rainEnabled&&cloudDensity>=RAIN_CLOUD_MIN;
+      rainSystem.visible=raining;
+      const lensState=raining&&active;
+      if(lensState!==lastRainLensState){
+        const lens=$('rain-lens');if(lens)lens.classList.toggle('active',lensState);
+        lastRainLensState=lensState;
+      }
+      // These are material uniforms; changing them needs no shader rebuild.
+      // The original set needsUpdate=true every frame, repeatedly recompiling shaders.
+      if(raining!==lastRainSurfaceState){
+        const runwayMat=sharedMaterialCache.get('runway-asphalt');
+        if(runwayMat){runwayMat.roughness=raining?.40:.96;runwayMat.metalness=raining?.10:.015;}
+        lastRainSurfaceState=raining;
+      }
+      if(!raining)return;
+      rainSystem.position.copy(plane.position);
+      const a=rainSystem.geometry.attributes.position.array;
+      for(let i=0;i<a.length;i+=3){a[i+1]-=92*dt;a[i]-=wind.x*1.05*dt;a[i+2]-=wind.z*.35*dt;if(a[i+1]<-8){a[i+1]=125;a[i]=(Math.random()-.5)*180;a[i+2]=(Math.random()-.5)*180;}}
+      rainSystem.geometry.attributes.position.needsUpdate=true;
+    }
     function wrapAngle(a){while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;}function headingRad(){if(!plane)return 0;const f=new THREE.Vector3(0,0,1).applyQuaternion(plane.quaternion);return Math.atan2(f.x,f.z);}
     function toggleEngineStart(){if(!active||crashed)return;systems.enginesRunning=!systems.enginesRunning;if(!systems.enginesRunning){state.throttleCommand=0;showToast('ENGINE OFF');}else{showToast('ENGINE ON');}updateSystemsUI();}
     function cycleFailure(){const f=['none','engine','hydraulic','gear'];systems.failure=f[(f.indexOf(systems.failure)+1)%f.length];updateSystemsUI();showToast('FAILURE: '+systems.failure.toUpperCase());}
@@ -3912,16 +3938,18 @@
     }
 
     function addTrees() {
+      // Preserve the exact tree geometry, number, height distribution, materials and
+      // shadows. Split the *existing* 6,500 instances into spatial batches so the
+      // renderer can reject trees outside the camera AND shadow frustums.
+      // One world-sized InstancedMesh forced every tree through both GPU passes.
       const target = 6500;
+      const tileSize = 12000;
       const treeGeo = sharedGeometry('tree-crown-hi', () => new THREE.ConeGeometry(2.6, 11, 8));
       const trunkGeo = sharedGeometry('tree-trunk-hi', () => new THREE.CylinderGeometry(0.6, 0.8, 4, 7));
       const leafMat = sharedMaterial('tree-leaf', () => new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 1 }));
       const trunkMat = sharedMaterial('tree-trunk', () => new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 1 }));
-      const trees = new THREE.InstancedMesh(treeGeo, leafMat, target);
-      const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, target);
-      const dummy = new THREE.Object3D();
-      let used = 0;
-      let attempts = 0;
+      const tiles = new Map();
+      let used = 0, attempts = 0;
       while (used < target && attempts < target * 6) {
         attempts++;
         const x = (Math.random() - 0.5) * 90000;
@@ -3929,22 +3957,46 @@
         if (isNearRunwaySafetyZone(x, z, 1900, 3000)) continue;
         const h = getSurfaceHeight(x, z);
         if (h < 40 || h > 850) continue;
-        const s = 0.65 + Math.random() * 1.6;
-        dummy.position.set(x, h + 7.4 * s, z);
-        dummy.rotation.y = Math.random() * Math.PI * 2;
-        dummy.scale.setScalar(s);
-        dummy.updateMatrix();
-        trees.setMatrixAt(used, dummy.matrix);
-        dummy.position.y = h + 2 * s;
-        dummy.updateMatrix();
-        trunks.setMatrixAt(used, dummy.matrix);
+        const scale = 0.65 + Math.random() * 1.6;
+        const rotation = Math.random() * Math.PI * 2;
+        const tx = Math.floor(x / tileSize), tz = Math.floor(z / tileSize);
+        const key = tx + ',' + tz;
+        if (!tiles.has(key)) tiles.set(key, {x:(tx+.5)*tileSize,z:(tz+.5)*tileSize,items:[]});
+        tiles.get(key).items.push({x,z,h,scale,rotation});
         used++;
       }
-      trees.count = used;
-      trunks.count = used;
-      trees.castShadow = true;
-      trunks.castShadow = true;
-      scene.add(trees, trunks);
+      const dummy = new THREE.Object3D();
+      const bounds = new THREE.Box3();
+      const point = new THREE.Vector3();
+      tiles.forEach(tile => {
+        const crowns = new THREE.InstancedMesh(treeGeo.clone(), leafMat, tile.items.length);
+        const trunks = new THREE.InstancedMesh(trunkGeo.clone(), trunkMat, tile.items.length);
+        bounds.makeEmpty();
+        tile.items.forEach((tree, i) => {
+          const localX = tree.x - tile.x, localZ = tree.z - tile.z;
+          dummy.position.set(localX, tree.h + 7.4*tree.scale, localZ);
+          dummy.rotation.set(0, tree.rotation, 0);
+          dummy.scale.setScalar(tree.scale);
+          dummy.updateMatrix();
+          crowns.setMatrixAt(i, dummy.matrix);
+          dummy.position.y = tree.h + 2*tree.scale;
+          dummy.updateMatrix();
+          trunks.setMatrixAt(i, dummy.matrix);
+          // Loose but correct bounds include both crown and trunk geometry.
+          const r = 3*tree.scale;
+          bounds.expandByPoint(point.set(localX-r, tree.h-r, localZ-r));
+          bounds.expandByPoint(point.set(localX+r, tree.h+14*tree.scale, localZ+r));
+        });
+        const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+        crowns.geometry.boundingSphere = sphere.clone();
+        trunks.geometry.boundingSphere = sphere.clone();
+        crowns.position.set(tile.x,0,tile.z);
+        trunks.position.set(tile.x,0,tile.z);
+        crowns.frustumCulled = trunks.frustumCulled = true;
+        crowns.castShadow = trunks.castShadow = true;
+        crowns.instanceMatrix.needsUpdate = trunks.instanceMatrix.needsUpdate = true;
+        scene.add(crowns, trunks);
+      });
     }
 
     function buildCity() {
@@ -4004,6 +4056,12 @@
         inst.instanceMatrix.needsUpdate = true;
         if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
         inst.castShadow = true; inst.receiveShadow = true;
+        // InstancedMesh defaults to frustumCulled=false in this Three.js version.
+        // A conservative cluster bound culls only entire offscreen city blocks;
+        // every building and rooftop stays unchanged when the cluster is visible.
+        inst.geometry = boxGeo.clone();
+        inst.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 500, 0), 7700);
+        inst.frustumCulled = true;
         return inst;
       }
 
@@ -4023,7 +4081,11 @@
             dummy.rotation.set(0, b.r, 0); dummy.scale.set(Math.max(4, b.w * .22), 3.6, Math.max(4, b.d * .22)); dummy.updateMatrix();
             roofs.setMatrixAt(i, dummy.matrix);
           });
-          roofs.instanceMatrix.needsUpdate = true; roofs.castShadow = true; roofs.receiveShadow = true; high.add(roofs);
+          roofs.instanceMatrix.needsUpdate = true; roofs.castShadow = true; roofs.receiveShadow = true;
+          roofs.geometry = rooftopGeo.clone();
+          roofs.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 500, 0), 7700);
+          roofs.frustumCulled = true;
+          high.add(roofs);
         }
         // A sparse orthogonal street grid gives the urban clusters recognizable structure.
         const roads = [];
@@ -4037,7 +4099,11 @@
           dummy.position.set(rd.x, getSurfaceHeight(wx, wz) + .22, rd.z);
           dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.scale.set(rd.sx, rd.sz, 1); dummy.updateMatrix(); roadBatch.setMatrixAt(i, dummy.matrix);
         });
-        roadBatch.instanceMatrix.needsUpdate = true; roadBatch.receiveShadow = true; high.add(roadBatch);
+        roadBatch.instanceMatrix.needsUpdate = true; roadBatch.receiveShadow = true;
+        roadBatch.geometry = roadGeo.clone();
+        roadBatch.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 500, 0), 7700);
+        roadBatch.frustumCulled = true;
+        high.add(roadBatch);
 
         const mid = new THREE.Group(); mid.add(makeBuildingBatch(items, 2, midMat, false));
         const far = new THREE.Group(); far.add(makeBuildingBatch(items, 4, farMat, false));
@@ -6882,8 +6948,20 @@
 
       perfFrameCounter++;
       if (renderer.shadowMap.enabled && now - lastShadowUpdateMs >= 33) {
-        lastShadowUpdateMs = now;
-        renderer.shadowMap.needsUpdate = true;
+        const focus = plane && active ? plane.position : runwayStart;
+        const direction = sun && sun.userData.shadowDirection;
+        const lightDirectionChanged = direction && (!lastShadowSunDirection || lastShadowSunDirection.distanceToSquared(direction) > 0.000001);
+        const focusMoved = previousShadowFocus.distanceToSquared(focus) > 4;
+        const poseChanged = plane && active && (1-Math.abs(previousShadowRotation.dot(plane.quaternion)) > 0.00005);
+        // On a paused/parked or menu scene, reuse the existing shadow texture;
+        // while flying it updates normally as the aircraft/light moves.
+        if (focusMoved || poseChanged || lightDirectionChanged || now-lastShadowUpdateMs > 350) {
+          lastShadowUpdateMs = now;
+          renderer.shadowMap.needsUpdate = true;
+          previousShadowFocus.copy(focus);
+          if(plane&&active)previousShadowRotation.copy(plane.quaternion);
+          if(direction){if(!lastShadowSunDirection)lastShadowSunDirection=direction.clone();else lastShadowSunDirection.copy(direction);}
+        }
       }
       renderer.render(scene, camera);
     }
@@ -7147,7 +7225,7 @@
     }
 
     function aircraftPitchDegrees() {
-      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
+      const forward = flightV18.set(0, 0, 1).applyQuaternion(plane.quaternion);
       return THREE.MathUtils.radToDeg(Math.asin(clamp(forward.y, -1, 1)));
     }
 
@@ -7923,7 +8001,7 @@
       $('gearWarning').style.display = (!gearDown && approachingLanding) ? 'block' : 'none';
       $('overspeedWarning').style.display = (mach > aircraft.machLimit * .98 || speedKnots > aircraft.vmo) ? 'block' : 'none';
 
-      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
+      const fwd = hudForward.set(0, 0, 1).applyQuaternion(plane.quaternion);
       const rollDeg = THREE.MathUtils.radToDeg(plane.rotation.z);
       const pitchShift = clamp(fwd.y * 145, -80, 80);
       $('horizon-layer').style.transform = `translate(-50%, calc(-50% + ${pitchShift}px)) rotate(${-rollDeg}deg)`;

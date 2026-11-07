@@ -302,7 +302,7 @@
     // The label is attached to the *actual* plane, not a stand-in geometric marker.
     model.add(nameplate);
     scene.add(model);
-    return {group:model,position:new THREE.Vector3(),quaternion:new THREE.Quaternion(),ready:false,stale:performance.now(),name:p.name,aircraft:p.aircraft,livery:p.livery,premium:!!p.premium};
+    return {group:model,label:nameplate,position:new THREE.Vector3(),quaternion:new THREE.Quaternion(),ready:false,stale:performance.now(),name:p.name,aircraft:p.aircraft,livery:p.livery,premium:!!p.premium};
   }
   function removeRemote(id){const item=mp.remote.get(id);if(!item)return;scene.remove(item.group);item.group.traverse(o=>{if(o.isSprite&&o.material){if(o.material.map)o.material.map.dispose();o.material.dispose();}});mp.remote.delete(id);}
   function receiveRemote(p){
@@ -357,14 +357,15 @@
       mp.sendAccumulator=0;
       if(!systems.replay)emit({type:'state',position:[plane.position.x,plane.position.y,plane.position.z].map(n=>Math.round(n*10)/10),rotation:[plane.quaternion.x,plane.quaternion.y,plane.quaternion.z,plane.quaternion.w].map(n=>Math.round(n*10000)/10000),speed:Math.round(state.iasKnots||0)});
     }
+    const remoteNow=performance.now();
     for(const [id,r] of mp.remote){
-      if(performance.now()-r.stale>12000){r.group.visible=false;continue;}
+      if(remoteNow-r.stale>12000){r.group.visible=false;continue;}
       const distance=plane.position.distanceTo(r.position);
       r.group.visible=distance<100000;
       if(!r.group.visible)continue;
       const alpha=1-Math.exp(-Math.min(dt,.12)*11);
       r.group.position.lerp(r.position,alpha);r.group.quaternion.slerp(r.quaternion,alpha);
-      const label=r.group.getObjectByName('pilotUsernameLabel');
+      const label=r.label; // Cached when the remote is created; avoid traversing every detailed aircraft each frame.
       if(label){const scale=Math.max(32,Math.min(1250,distance*.030));label.scale.set(scale,scale*5.83/32,1);}
 
     }
